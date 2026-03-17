@@ -136,6 +136,7 @@
         <div class="controls">
             <button class="btn-start" id="startBtn" onclick="startTracking()">▶ START</button>
             <button class="btn-stop" id="stopBtn" onclick="stopTracking()" disabled>⏹ STOP</button>
+            <button class="btn-start" id="cameraBtn" onclick="toggleCamera()" style="background: #2196F3;">📷 FLIP CAMERA</button>
         </div>
         
         <div class="stats">
@@ -174,6 +175,7 @@
         let lastFpsTime = performance.now();
         let trackedObjects = new Map();
         let nextTrackId = 0;
+        let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
 
         function log(message, type = 'info') {
             console.log(message);
@@ -220,7 +222,7 @@
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                    video: { facingMode: cameraFacing, width: { ideal: 640 }, height: { ideal: 480 } }
                 });
                 log('✓ Camera access granted', 'success');
                 
@@ -362,6 +364,22 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
+        }
+
+        function toggleCamera() {
+            const cameraName = cameraFacing === 'user' ? 'Back Camera' : 'Front Camera';
+            cameraFacing = cameraFacing === 'user' ? 'environment' : 'user';
+            
+            if (isTracking) {
+                log('Switching to ' + cameraName + '...', 'info');
+                stopTracking();
+                setTimeout(() => {
+                    startTracking();
+                }, 500);
+            } else {
+                log('Camera switched to: ' + cameraName, 'success');
+                updateStatus('Ready with ' + cameraName, 'idle');
+            }
         }
 
         // Initialize on load
