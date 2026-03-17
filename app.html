@@ -117,11 +117,36 @@
         .debug-line { margin: 5px 0; }
         .error { color: #d32f2f; }
         .success { color: #388e3c; }
+        .confidence-control {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .confidence-control label {
+            font-weight: 600;
+            color: #333;
+            min-width: 120px;
+        }
+        .confidence-control input[type="range"] {
+            flex: 1;
+            min-width: 150px;
+            cursor: pointer;
+        }
+        .confidence-value {
+            font-weight: 600;
+            color: #2196F3;
+            min-width: 50px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎯 YOLO Object Tracking</h1>
+        <h1>🎯 Object Tracking</h1>
         <p class="subtitle">Real-time tracking • 100% Client-Side Processing</p>
         
         <div class="status idle" id="status">
@@ -131,6 +156,12 @@
         <div class="video-container">
             <video id="video" playsinline autoplay muted></video>
             <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="confidence-control">
+            <label for="confidenceSlider">Confidence:</label>
+            <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">
+            <span class="confidence-value" id="confidenceValue">0.50</span>
         </div>
         
         <div class="controls">
@@ -176,6 +207,7 @@
         let trackedObjects = new Map();
         let nextTrackId = 0;
         let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
+        let confidenceThreshold = 0.5; // Default confidence threshold
 
         function log(message, type = 'info') {
             console.log(message);
@@ -306,7 +338,7 @@
             try {
                 // Detect
                 const predictions = await model.detect(video);
-                const filtered = predictions.filter(p => p.score > 0.5);
+                const filtered = predictions.filter(p => p.score > confidenceThreshold);
                 
                 // Track
                 const tracked = updateTrack(filtered);
@@ -380,6 +412,12 @@
                 log('Camera switched to: ' + cameraName, 'success');
                 updateStatus('Ready with ' + cameraName, 'idle');
             }
+        }
+
+        function updateConfidence(value) {
+            confidenceThreshold = value / 100;
+            document.getElementById('confidenceValue').textContent = confidenceThreshold.toFixed(2);
+            log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');
         }
 
         // Initialize on load
