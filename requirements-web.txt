@@ -11,4 +11,4 @@ ultralytics @ git+https://github.com/mikel-brostrom/ultralytics.git
 Pillow==10.1.0
 aiofiles==23.2.1
 pydantic==2.5.0
-python-dotenv==1.0.0
+python-dotenv==1.2.2
