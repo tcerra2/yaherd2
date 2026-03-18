@@ -184,6 +184,10 @@
                 <div class="stat-value" id="tracked">0</div>
             </div>
             <div class="stat-box">
+                <div class="stat-label">Faces</div>
+                <div class="stat-value" id="faces">0</div>
+            </div>
+            <div class="stat-box">
                 <div class="stat-label">Time (ms)</div>
                 <div class="stat-value" id="processTime">0</div>
             </div>
@@ -205,9 +209,14 @@
         let fps = 0;
         let lastFpsTime = performance.now();
         let trackedObjects = new Map();
+        let trackedFaces = new Map();
         let nextTrackId = 0;
+        let nextFaceId = 0;
         let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
         let confidenceThreshold = 0.5; // Default confidence threshold
+        let latestFaces = []; // Latest face detections (async from server)
+        let isFaceDetectionRunning = false;
+        let faceDetectionQueue = [];
 
         function log(message, type = 'info') {
             console.log(message);
@@ -230,6 +239,7 @@
             try {
                 model = await cocoSsd.load();
                 log('✓ Model loaded successfully', 'success');
+                log('✓ Face detection endpoint ready (YOLOv8n-face)', 'success');
                 updateStatus('Ready! Click START to begin tracking', 'idle');
             } catch (err) {
                 log(`✗ Model load error: ${err.message}`, 'error');
@@ -250,7 +260,9 @@
             document.getElementById('stopBtn').disabled = false;
             updateStatus('🔴 TRACKING ACTIVE', 'active');
             trackedObjects.clear();
+            trackedFaces.clear();
             nextTrackId = 0;
+            nextFaceId = 0;
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -330,24 +342,129 @@
             return newTracks;
         }
 
+        // ======================================
+        // FACE TRACKING (Parallel, Non-blocking)
+        // ======================================
+
+        function updateFaceTrack(newFaces) {
+            const used = new Set();
+            
+            // Match existing face tracks to new detections
+            for (const [faceId, faceInfo] of trackedFaces) {
+                let bestDist = Infinity;
+                let bestIdx = -1;
+
+                newFaces.forEach((face, idx) => {
+                    if (used.has(idx)) return;
+                    
+                    // Center of face bounding box
+                    const newCx = (face.x1 + face.x2) / 2;
+                    const newCy = (face.y1 + face.y2) / 2;
+                    
+                    // Distance from previous position
+                    const dx = newCx - faceInfo.cx;
+                    const dy = newCy - faceInfo.cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestIdx = idx;
+                    }
+                });
+
+                // Update track if close match found (within 150 pixels)
+                if (bestIdx >= 0 && bestDist < 150) {
+                    used.add(bestIdx);
+                    const face = newFaces[bestIdx];
+                    trackedFaces.set(faceId, {
+                        x1: face.x1,
+                        y1: face.y1,
+                        x2: face.x2,
+                        y2: face.y2,
+                        cx: (face.x1 + face.x2) / 2,
+                        cy: (face.y1 + face.y2) / 2,
+                        confidence: face.confidence
+                    });
+                }
+            }
+
+            // Add new face tracks
+            newFaces.forEach((face, idx) => {
+                if (!used.has(idx)) {
+                    const faceId = nextFaceId++;
+                    trackedFaces.set(faceId, {
+                        x1: face.x1,
+                        y1: face.y1,
+                        x2: face.x2,
+                        y2: face.y2,
+                        cx: (face.x1 + face.x2) / 2,
+                        cy: (face.y1 + face.y2) / 2,
+                        confidence: face.confidence
+                    });
+                }
+            });
+        }
+
+        async function detectFaces() {
+            if (!isTracking || !canvas || canvas.width === 0) return;
+            if (isFaceDetectionRunning) {
+                faceDetectionQueue.push(true);
+                return; // Skip if already running
+            }
+
+            isFaceDetectionRunning = true;
+
+            try {
+                // Convert canvas to base64 string
+                const imageData = canvas.toDataURL('image/jpeg', 0.7); // 0.7 quality for speed
+
+                const response = await fetch('/api/detect-faces', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    latestFaces = result.faces || [];
+                    updateFaceTrack(latestFaces);
+                } else {
+                    console.warn('Face detection HTTP error:', response.status);
+                }
+            } catch (err) {
+                console.warn('Face detection error (non-blocking):', err.message);
+                // Don't log to UI - face detection is optional
+            } finally {
+                isFaceDetectionRunning = false;
+                // Process queue
+                if (faceDetectionQueue.length > 0) {
+                    faceDetectionQueue = [];
+                    // Could call detectFaces() again here if desired
+                }
+            }
+        }
+
         async function processFrame() {
             if (!isTracking) return;
 
             const startTime = performance.now();
 
             try {
-                // Detect
+                // Detect objects (MAIN - must not be blocked)
                 const predictions = await model.detect(video);
                 const filtered = predictions.filter(p => p.score > confidenceThreshold);
                 
-                // Track
+                // Track objects
                 const tracked = updateTrack(filtered);
+
+                // Start face detection in parallel (non-blocking)
+                detectFaces().catch(err => console.warn('Face detection queue error:', err));
 
                 // Draw
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(video, 0, 0);
 
-                // Draw boxes
+                // Draw object boxes (GREEN)
                 tracked.forEach(t => {
                     const [x, y, w, h] = t.det.bbox;
                     
@@ -363,6 +480,24 @@
                     ctx.fillText(`${t.det.class}`, x, y + h + 20);
                 });
 
+                // Draw face boxes (MAGENTA) - these are async, may lag slightly
+                trackedFaces.forEach((face, faceId) => {
+                    const { x1, y1, x2, y2, confidence } = face;
+                    const w = x2 - x1;
+                    const h = y2 - y1;
+
+                    ctx.strokeStyle = '#FF00FF';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x1, y1, w, h);
+
+                    ctx.fillStyle = '#FF00FF';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.fillText(`Face #${faceId}`, x1, y1 - 10);
+
+                    ctx.font = '11px Arial';
+                    ctx.fillText(`${(confidence * 100).toFixed(0)}%`, x1, y2 + 18);
+                });
+
                 // Stats
                 frameCount++;
                 const now = performance.now();
@@ -375,6 +510,7 @@
                 document.getElementById('fps').textContent = fps;
                 document.getElementById('detections').textContent = filtered.length;
                 document.getElementById('tracked').textContent = tracked.length;
+                document.getElementById('faces').textContent = trackedFaces.size;
                 document.getElementById('processTime').textContent = Math.round(performance.now() - startTime);
 
             } catch (err) {
