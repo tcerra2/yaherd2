@@ -347,10 +347,18 @@
         // ======================================
 
         function updateFaceTrack(newFaces) {
+            const now = Date.now();
             const used = new Set();
+            const FACE_TIMEOUT = 5000; // Remove faces unseen for >5 seconds
             
-            // Match existing face tracks to new detections
+            // Remove stale faces (inactive for too long)
             for (const [faceId, faceInfo] of trackedFaces) {
+                if (now - faceInfo.lastSeen > FACE_TIMEOUT) {
+                    trackedFaces.delete(faceId);
+                    continue;
+                }
+                
+                // Match existing face tracks to new detections
                 let bestDist = Infinity;
                 let bestIdx = -1;
 
@@ -383,7 +391,8 @@
                         y2: face.y2,
                         cx: (face.x1 + face.x2) / 2,
                         cy: (face.y1 + face.y2) / 2,
-                        confidence: face.confidence
+                        confidence: face.confidence,
+                        lastSeen: now
                     });
                 }
             }
@@ -399,7 +408,8 @@
                         y2: face.y2,
                         cx: (face.x1 + face.x2) / 2,
                         cy: (face.y1 + face.y2) / 2,
-                        confidence: face.confidence
+                        confidence: face.confidence,
+                        lastSeen: now
                     });
                 }
             });
@@ -436,10 +446,11 @@
                 // Don't log to UI - face detection is optional
             } finally {
                 isFaceDetectionRunning = false;
-                // Process queue
+                // Process queue - retry if requests were queued
                 if (faceDetectionQueue.length > 0) {
                     faceDetectionQueue = [];
-                    // Could call detectFaces() again here if desired
+                    // Schedule next detection immediately
+                    detectFaces().catch(err => console.warn('Queued detection error:', err));
                 }
             }
         }

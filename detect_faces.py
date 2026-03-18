@@ -39,8 +39,12 @@ def detect_faces(image_path, output_path, model_path='yolov8n-face.pt', conf=0.5
         
         # Read image
         image = cv2.imread(image_path)
-        if image is None:
+        if image is None or image.size == 0:
             raise ValueError(f"Could not read image: {image_path}")
+        
+        # Validate image is large enough
+        if image.shape[0] < 10 or image.shape[1] < 10:
+            raise ValueError(f"Image too small ({image.shape[0]}x{image.shape[1]}). Minimum 10x10 required")
         
         # Run inference
         results = model.predict(source=image, conf=conf, save=False, verbose=False)
@@ -56,8 +60,9 @@ def detect_faces(image_path, output_path, model_path='yolov8n-face.pt', conf=0.5
                         xyxy = box.xyxy[0].cpu().numpy().tolist()
                         x1, y1, x2, y2 = xyxy
                         
-                        # Get confidence
-                        conf_score = float(box.conf[0].cpu().numpy())
+                        # Get confidence (handle both tensor and scalar cases)
+                        conf_tensor = box.conf[0] if len(box.conf.shape) > 0 else box.conf
+                        conf_score = float(conf_tensor.cpu().numpy().item())
                         
                         faces.append({
                             'x1': float(x1),

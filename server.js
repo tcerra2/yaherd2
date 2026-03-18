@@ -41,6 +41,11 @@ app.get('/health', (req, res) => {
 // This endpoint runs in parallel with client-side object detection
 // If it fails, it doesn't affect object tracking (graceful degradation)
 app.post('/api/detect-faces', async (req, res) => {
+    let responseSent = false;
+    let tempFile = null;
+    let outputFile = null;
+    let processTimeout = null;
+
     try {
         const { image } = req.body;
         
@@ -48,10 +53,11 @@ app.post('/api/detect-faces', async (req, res) => {
             return res.json({ faces: [], error: 'No image provided' });
         }
         
-        // Convert base64 to temporary file
+        // Convert base64 to temporary file with unique ID to prevent collisions
         const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, '');
-        const tempFile = path.join(os.tmpdir(), `face_detect_${Date.now()}.jpg`);
-        const outputFile = path.join(os.tmpdir(), `face_results_${Date.now()}.json`);
+        const uniqueId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        tempFile = path.join(os.tmpdir(), `face_detect_${uniqueId}.jpg`);
+        outputFile = path.join(os.tmpdir(), `face_results_${uniqueId}.json`);
         
         try {
             fs.writeFileSync(tempFile, Buffer.from(base64Data, 'base64'));
@@ -60,51 +66,119 @@ app.post('/api/detect-faces', async (req, res) => {
             return res.json({ faces: [] });
         }
         
-        // Run YOLO face detection via Python
+        // Get Python executable (Railway uses 'python', not 'python3')
+        let pythonExe = process.env.PYTHON_EXE;
+        if (!pythonExe) {
+            pythonExe = process.platform === 'win32' ? 'python' : 'python3';
+        }
+        
         const pythonScript = path.join(__dirname, 'detect_faces.py');
-        const pythonExe = process.env.PYTHON_EXE || 'python3';
+        console.log(`[Face Detection] Executing: ${pythonExe} ${pythonScript}`);
         
         return new Promise((resolve) => {
-            const python = spawn(pythonExe, [pythonScript, tempFile, outputFile], { timeout: 30000 });
-            
+            const python = spawn(pythonExe, [pythonScript, tempFile, outputFile]);
             let stderrData = '';
+            let stdoutData = '';
             
+            // Set timeout to kill process if it hangs
+            processTimeout = setTimeout(() => {
+                console.warn('[Face Detection] Process timeout - killing');
+                python.kill('SIGTERM');
+                setTimeout(() => python.kill('SIGKILL'), 2000);
+            }, 30000);
+            
+            // Capture stderr to see actual errors
             python.stderr.on('data', (data) => {
-                stderrData += data.toString();
+                const msg = data.toString();
+                stderrData += msg;
+                if (msg.includes('Error') || msg.includes('ERROR') || msg.includes('error')) {
+                    console.error('[Face Detection] Python error:', msg.trim());
+                }
+            });
+            
+            // Capture stdout for debugging
+            python.stdout.on('data', (data) => {
+                stdoutData += data.toString();
             });
             
             python.on('close', (code) => {
+                // Clear timeout
+                if (processTimeout) clearTimeout(processTimeout);
+                
+                // Prevent sending response multiple times
+                if (responseSent) {
+                    cleanupFiles();
+                    resolve();
+                    return;
+                }
+                
                 try {
                     if (code === 0 && fs.existsSync(outputFile)) {
+                        // Success case
                         const detections = JSON.parse(fs.readFileSync(outputFile, 'utf-8'));
+                        responseSent = true;
                         res.json({ faces: detections.faces || [] });
-                        
-                        // Cleanup temp files
-                        try {
-                            fs.unlinkSync(tempFile);
-                            fs.unlinkSync(outputFile);
-                        } catch (e) { }
+                        console.log(`[Face Detection] ✓ Found ${detections.faces?.length || 0} faces`);
                     } else {
-                        console.warn('[Face Detection] No results or error. Code:', code);
+                        // Error case - log what went wrong
+                        console.error(`[Face Detection] Process exited with code: ${code}`);
+                        if (stderrData) {
+                            console.error('[Face Detection] Python stderr:', stderrData);
+                        }
+                        if (stdoutData) {
+                            console.log('[Face Detection] Python stdout:', stdoutData);
+                        }
+                        responseSent = true;
                         res.json({ faces: [] });
-                        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
                     }
                 } catch (err) {
                     console.error('[Face Detection] Parse error:', err.message);
-                    res.json({ faces: [] });
+                    if (!responseSent) {
+                        responseSent = true;
+                        res.json({ faces: [] });
+                    }
+                } finally {
+                    cleanupFiles();
+                    resolve();
                 }
-                resolve();
             });
             
             python.on('error', (err) => {
-                console.error('[Face Detection] Process error:', err.message);
-                res.json({ faces: [] });
+                // Clear timeout
+                if (processTimeout) clearTimeout(processTimeout);
+                
+                console.error('[Face Detection] Process spawn error:', err.message);
+                console.error('[Face Detection] Tried to execute:', pythonExe);
+                console.error('[Face Detection] Check if Python is installed: Run "python --version"');
+                
+                if (!responseSent) {
+                    responseSent = true;
+                    res.json({ faces: [] });
+                }
+                cleanupFiles();
                 resolve();
             });
+            
+            // Helper to cleanup temp files
+            function cleanupFiles() {
+                try {
+                    if (tempFile && fs.existsSync(tempFile)) {
+                        fs.unlinkSync(tempFile);
+                    }
+                    if (outputFile && fs.existsSync(outputFile)) {
+                        fs.unlinkSync(outputFile);
+                    }
+                } catch (e) {
+                    console.warn('[Face Detection] Cleanup error:', e.message);
+                }
+            }
         });
     } catch (err) {
         console.error('[Face Detection] Endpoint error:', err.message);
-        res.json({ faces: [] });
+        if (!responseSent) {
+            responseSent = true;
+            res.json({ faces: [] });
+        }
     }
 });
 
