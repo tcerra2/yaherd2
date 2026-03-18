@@ -4,7 +4,6 @@
   "description": "Client-side YOLO object tracking web app",
   "main": "server.js",
   "scripts": {
-     "postinstall": "python3 -m pip install --no-cache-dir -r requirements-web.txt || python -m pip install --no-cache-dir -r requirements-web.txt",
     "start": "node server.js",
     "dev": "node server.js"
   },
