@@ -73,10 +73,12 @@ app.post('/api/detect-faces', async (req, res) => {
         }
         
         const pythonScript = path.join(__dirname, 'detect_faces.py');
-        console.log(`[Face Detection] Executing: ${pythonExe} ${pythonScript}`);
+            const modelPath = path.join(__dirname, 'yolov8n-face.pt');
+            console.log(`[Face Detection] Executing: ${pythonExe} ${pythonScript}`);
+            console.log(`[Face Detection] Model path: ${modelPath}`);
         
         return new Promise((resolve) => {
-            const python = spawn(pythonExe, [pythonScript, tempFile, outputFile]);
+                const python = spawn(pythonExe, [pythonScript, tempFile, outputFile, modelPath]);
             let stderrData = '';
             let stdoutData = '';
             
