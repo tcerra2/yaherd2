@@ -36,10 +36,59 @@ app.get('/', (req, res) => {
         '</div>',
         '</div>'
     ].join('');
-    const markedHtml = appHtml.replace(
+    let markedHtml = appHtml.replace(
         '<p class="subtitle">Real-time tracking • 100% Client-Side Processing</p>',
         `<p class="subtitle">Real-time tracking • 100% Client-Side Processing</p>${deployMarker}`
     );
+
+    const extraControls = [
+        '<div class="confidence-control">',
+        '    <label for="exposureSlider">Exposure:</label>',
+        '    <input type="range" id="exposureSlider" min="-50" max="50" value="0" onchange="updateExposure(this.value)">',
+        '    <span class="confidence-value" id="exposureValue">0</span>',
+        '</div>',
+        '<div class="confidence-control">',
+        '    <label for="contrastSlider">Contrast:</label>',
+        '    <input type="range" id="contrastSlider" min="50" max="200" value="100" onchange="updateContrast(this.value)">',
+        '    <span class="confidence-value" id="contrastValue">100%</span>',
+        '</div>'
+    ].join('');
+
+    markedHtml = markedHtml.replace(
+        '<div class="confidence-control">\n            <label for="confidenceSlider">Confidence:</label>\n            <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">\n            <span class="confidence-value" id="confidenceValue">0.50</span>\n        </div>',
+        '<div class="confidence-control">\n            <label for="confidenceSlider">Confidence:</label>\n            <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">\n            <span class="confidence-value" id="confidenceValue">0.50</span>\n        </div>\n        ' + extraControls
+    );
+
+    markedHtml = markedHtml.replace(
+        "let confidenceThreshold = 0.5; // Default confidence threshold",
+        "let confidenceThreshold = 0.5; // Default confidence threshold\n        let exposureValue = 0; // -50 to 50\n        let contrastValue = 100; // 50 to 200"
+    );
+
+    markedHtml = markedHtml.replace(
+        "            return newTracks;\n        }",
+        "            return newTracks;\n        }\n\n        function getClassColor(className) {\n            const palette = ['#00C2FF', '#FF6B6B', '#FFD93D', '#6BCB77', '#B983FF', '#FF9F1C', '#2EC4B6', '#F15BB5', '#43AA8B', '#577590'];\n            const label = String(className || 'object');\n            let hash = 0;\n\n            for (let index = 0; index < label.length; index += 1) {\n                hash = ((hash << 5) - hash) + label.charCodeAt(index);\n                hash |= 0;\n            }\n\n            return palette[Math.abs(hash) % palette.length];\n        }"
+    );
+
+    markedHtml = markedHtml.replace(
+        "                ctx.clearRect(0, 0, canvas.width, canvas.height);\n                ctx.drawImage(video, 0, 0);",
+        "                ctx.clearRect(0, 0, canvas.width, canvas.height);\n                if (exposureValue !== 0 || contrastValue !== 100) {\n                    const brightness = 100 + exposureValue;\n                    ctx.filter = `brightness(${brightness}%) contrast(${contrastValue}%)`;\n                }\n                ctx.drawImage(video, 0, 0);\n                ctx.filter = 'none';"
+    );
+
+    markedHtml = markedHtml.replace(
+        "                tracked.forEach(t => {\n                    const [x, y, w, h] = t.det.bbox;\n                    \n                    ctx.strokeStyle = '#00FF00';",
+        "                tracked.forEach(t => {\n                    const [x, y, w, h] = t.det.bbox;\n                    const boxColor = getClassColor(t.det.class);\n                    \n                    ctx.strokeStyle = boxColor;"
+    );
+
+    markedHtml = markedHtml.replace(
+        "                    ctx.fillStyle = '#00FF00';",
+        "                    ctx.fillStyle = boxColor;"
+    );
+
+    markedHtml = markedHtml.replace(
+        "        function updateConfidence(value) {\n            confidenceThreshold = value / 100;\n            document.getElementById('confidenceValue').textContent = confidenceThreshold.toFixed(2);\n            log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');\n        }",
+        "        function updateConfidence(value) {\n            confidenceThreshold = value / 100;\n            document.getElementById('confidenceValue').textContent = confidenceThreshold.toFixed(2);\n            log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');\n        }\n\n        function updateExposure(value) {\n            exposureValue = parseInt(value, 10);\n            document.getElementById('exposureValue').textContent = (exposureValue >= 0 ? '+' : '') + exposureValue;\n            log('Exposure adjusted: ' + exposureValue, 'info');\n        }\n\n        function updateContrast(value) {\n            contrastValue = parseInt(value, 10);\n            document.getElementById('contrastValue').textContent = contrastValue + '%';\n            log('Contrast adjusted: ' + contrastValue + '%', 'info');\n        }"
+    );
+
     res.send(markedHtml);
 });
 
