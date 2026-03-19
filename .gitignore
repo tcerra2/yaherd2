@@ -2,7 +2,6 @@
 .venv/
 .eggs/
 env/
-node_modules/
 *.DS_Store
 .coverage
 htmlcov/
@@ -31,7 +30,6 @@ val_utils/
 *_openvino_model
 *.torchscript
 *.pt
-!yolov8n-face.pt
 *.pth
 *.onnx
 *.engine

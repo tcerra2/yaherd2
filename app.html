@@ -142,123 +142,6 @@
             min-width: 50px;
             text-align: right;
         }
-        .advanced-controls {
-            background: #f9f9f9;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
-            display: grid;
-            gap: 12px;
-        }
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .control-group label {
-            font-weight: 600;
-            color: #333;
-            min-width: 120px;
-            font-size: 0.95em;
-        }
-        .control-group input[type="range"] {
-            flex: 1;
-            min-width: 120px;
-            cursor: pointer;
-        }
-        .control-value {
-            font-weight: 600;
-            color: #2196F3;
-            min-width: 45px;
-            text-align: right;
-            font-size: 0.9em;
-        }
-        .face-gallery {
-            margin-top: 20px;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 15px;
-        }
-        .face-gallery-title {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 12px;
-            font-size: 1em;
-        }
-        .face-thumbnails {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
-            gap: 12px;
-            min-height: 140px;
-            max-height: 160px;
-            overflow-y: auto;
-            padding-right: 5px;
-        }
-        .face-thumbnails::-webkit-scrollbar {
-            width: 8px;
-        }
-        .face-thumbnails::-webkit-scrollbar-track {
-            background: #e0e0e0;
-            border-radius: 4px;
-        }
-        .face-thumbnails::-webkit-scrollbar-thumb {
-            background: #2196F3;
-            border-radius: 4px;
-        }
-        .face-thumbnails::-webkit-scrollbar-thumb:hover {
-            background: #1976D2;
-        }
-        .face-card {
-            background: white;
-            border: 2px solid #2196F3;
-            border-radius: 10px;
-            padding: 8px;
-            text-align: center;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.15);
-            cursor: pointer;
-        }
-        .face-card:hover {
-            border-color: #1976D2;
-            box-shadow: 0 6px 16px rgba(33, 150, 243, 0.3);
-            transform: translateY(-2px);
-        }
-        .face-image {
-            width: 100%;
-            height: 95px;
-            object-fit: cover;
-            border-radius: 6px;
-            background: #e0e0e0;
-            display: block;
-        }
-        .face-info {
-            margin-top: 6px;
-            font-size: 0.7em;
-        }
-        .face-id {
-            font-weight: 700;
-            color: #2196F3;
-            margin-bottom: 1px;
-            font-size: 0.85em;
-        }
-        .person-id {
-            color: #666;
-            font-size: 0.65em;
-            margin-bottom: 1px;
-        }
-        .face-confidence {
-            color: #4CAF50;
-            font-size: 0.65em;
-            font-weight: 600;
-            margin-bottom: 1px;
-        }
-        .face-timestamp {
-            color: #999;
-            font-size: 0.6em;
-            margin-top: 2px;
-        }
     </style>
 </head>
 <body>
@@ -275,33 +158,10 @@
             <canvas id="canvas"></canvas>
         </div>
         
-        <div class="face-gallery" id="faceGalleryContainer" style="display: none;">
-            <div class="face-gallery-title">👤 Detected Faces</div>
-            <div class="face-thumbnails" id="faceThumbnails"></div>
-        </div>
-        
         <div class="confidence-control">
             <label for="confidenceSlider">Confidence:</label>
             <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">
             <span class="confidence-value" id="confidenceValue">0.50</span>
-        </div>
-        
-        <div class="advanced-controls">
-            <div class="control-group">
-                <label for="exposureSlider">Exposure:</label>
-                <input type="range" id="exposureSlider" min="-50" max="50" value="0" onchange="updateExposure(this.value)">
-                <span class="control-value" id="exposureValue">0</span>
-            </div>
-            <div class="control-group">
-                <label for="contrastSlider">Contrast:</label>
-                <input type="range" id="contrastSlider" min="50" max="200" value="100" onchange="updateContrast(this.value)">
-                <span class="control-value" id="contrastValue">100%</span>
-            </div>
-            <div class="control-group">
-                <label for="faceConfidenceSlider">Face Confidence:</label>
-                <input type="range" id="faceConfidenceSlider" min="0" max="100" value="50" onchange="updateFaceConfidence(this.value)">
-                <span class="control-value" id="faceConfidenceValue">0.50</span>
-            </div>
         </div>
         
         <div class="controls">
@@ -322,10 +182,6 @@
             <div class="stat-box">
                 <div class="stat-label">Tracked IDs</div>
                 <div class="stat-value" id="tracked">0</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Faces</div>
-                <div class="stat-value" id="trackedFaces">0</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Time (ms)</div>
@@ -352,26 +208,6 @@
         let nextTrackId = 0;
         let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
         let confidenceThreshold = 0.5; // Default confidence threshold
-        
-        // Face detection sidecar state
-        let faceDetections = [];
-        let facePollingTimer = null;
-        let faceRequestInFlight = false;
-        let faceAbortController = null;
-        let faceDetectionEnabled = true;
-        let facePollIntervalMs = 750;
-        let faceRequestTimeoutMs = 3500;
-        let faceOverlayUpdatedAt = 0;
-        let lastFaceErrorAt = 0;
-        const FACE_RESULT_TTL_MS = 2000;
-        const MIN_FACE_BOX_SIZE_PX = 20;
-        const faceCaptureCanvas = document.createElement('canvas');
-        const faceCaptureContext = faceCaptureCanvas.getContext('2d');
-        
-        // Image processing variables
-        let exposureValue = 0; // -50 to 50
-        let contrastValue = 100; // 50 to 200
-        let faceConfidenceThreshold = 0.5; // Face detection confidence
 
         function log(message, type = 'info') {
             console.log(message);
@@ -393,9 +229,7 @@
             updateStatus('Loading model...', 'loading');
             try {
                 model = await cocoSsd.load();
-                log('✓ COCO-SSD model loaded successfully', 'success');
-                log('✓ Face detection sidecar available through /api/detect-faces', 'success');
-                
+                log('✓ Model loaded successfully', 'success');
                 updateStatus('Ready! Click START to begin tracking', 'idle');
             } catch (err) {
                 log(`✗ Model load error: ${err.message}`, 'error');
@@ -417,8 +251,6 @@
             updateStatus('🔴 TRACKING ACTIVE', 'active');
             trackedObjects.clear();
             nextTrackId = 0;
-            clearFaceDetections();
-            log('✓ Tracking started. Object tracking remains local; face detection polls separately.', 'success');
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -430,17 +262,13 @@
                 video.onloadedmetadata = () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
-                    faceCaptureCanvas.width = video.videoWidth;
-                    faceCaptureCanvas.height = video.videoHeight;
                     log(`✓ Camera: ${video.videoWidth}x${video.videoHeight}`, 'success');
-                    startFacePolling();
                     processFrame();
                 };
             } catch (err) {
                 log(`✗ Camera error: ${err.message}`, 'error');
                 updateStatus(`Camera error: ${err.message}`, 'error');
                 isTracking = false;
-                stopFacePolling();
                 document.getElementById('startBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = true;
             }
@@ -502,215 +330,24 @@
             return newTracks;
         }
 
-        async function loadServerConfig() {
-            try {
-                const response = await fetch('/api/config', { cache: 'no-store' });
-                if (!response.ok) {
-                    return;
-                }
-
-                const config = await response.json();
-                const faceConfig = config.faceDetection || {};
-                faceDetectionEnabled = faceConfig.enabled !== false;
-                facePollIntervalMs = Number.isFinite(faceConfig.pollIntervalMs) ? faceConfig.pollIntervalMs : facePollIntervalMs;
-                faceRequestTimeoutMs = Number.isFinite(faceConfig.timeoutMs) ? Math.max(250, faceConfig.timeoutMs - 250) : faceRequestTimeoutMs;
-
-                if (!faceDetectionEnabled) {
-                    log('Face detection is disabled by server configuration.', 'info');
-                }
-            } catch (err) {
-                log('Using local face detection defaults.', 'info');
-            }
-        }
-
-        function logFaceError(message) {
-            const now = performance.now();
-            if (now - lastFaceErrorAt >= 5000) {
-                log(message, 'error');
-                lastFaceErrorAt = now;
-            }
-        }
-
-        function clearFaceDetections() {
-            faceDetections = [];
-            faceOverlayUpdatedAt = 0;
-            document.getElementById('trackedFaces').textContent = '0';
-        }
-
-        function stopFacePolling() {
-            if (facePollingTimer !== null) {
-                clearInterval(facePollingTimer);
-                facePollingTimer = null;
-            }
-
-            if (faceAbortController) {
-                faceAbortController.abort();
-                faceAbortController = null;
-            }
-
-            faceRequestInFlight = false;
-        }
-
-        function startFacePolling() {
-            stopFacePolling();
-
-            if (!faceDetectionEnabled) {
-                clearFaceDetections();
-                return;
-            }
-
-            facePollingTimer = window.setInterval(() => {
-                void pollFaces();
-            }, facePollIntervalMs);
-
-            void pollFaces();
-        }
-
-        function captureFaceFrame() {
-            if (!video.videoWidth || !video.videoHeight) {
-                return null;
-            }
-
-            if (faceCaptureCanvas.width !== video.videoWidth || faceCaptureCanvas.height !== video.videoHeight) {
-                faceCaptureCanvas.width = video.videoWidth;
-                faceCaptureCanvas.height = video.videoHeight;
-            }
-
-            faceCaptureContext.drawImage(video, 0, 0, faceCaptureCanvas.width, faceCaptureCanvas.height);
-            return faceCaptureCanvas.toDataURL('image/jpeg', 0.8);
-        }
-
-        function normalizeFaceDetections(rawFaces) {
-            if (!Array.isArray(rawFaces)) {
-                return [];
-            }
-
-            return rawFaces.map((face) => {
-                const x1 = Number(face.x1);
-                const y1 = Number(face.y1);
-                const x2 = Number(face.x2);
-                const y2 = Number(face.y2);
-                const confidence = Number(face.confidence ?? 0);
-
-                if (![x1, y1, x2, y2].every(Number.isFinite) || x2 <= x1 || y2 <= y1) {
-                    return null;
-                }
-
-                return {
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    confidence,
-                    width: x2 - x1,
-                    height: y2 - y1
-                };
-            }).filter(Boolean);
-        }
-
-        async function pollFaces() {
-            if (!isTracking || !faceDetectionEnabled || faceRequestInFlight || video.readyState < 2) {
-                return;
-            }
-
-            const image = captureFaceFrame();
-            if (!image) {
-                return;
-            }
-
-            faceRequestInFlight = true;
-            faceAbortController = new AbortController();
-            const timeoutId = window.setTimeout(() => {
-                if (faceAbortController) {
-                    faceAbortController.abort();
-                }
-            }, faceRequestTimeoutMs);
-
-            try {
-                const response = await fetch('/api/detect-faces', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image }),
-                    signal: faceAbortController.signal
-                });
-
-                const payload = await response.json().catch(() => ({ faces: [] }));
-
-                if (payload.disabled) {
-                    faceDetectionEnabled = false;
-                    stopFacePolling();
-                    clearFaceDetections();
-                    log('Face detection disabled by backend.', 'info');
-                    return;
-                }
-
-                faceDetections = normalizeFaceDetections(payload.faces)
-                    .filter((face) => face.confidence >= faceConfidenceThreshold)
-                    .filter((face) => face.width >= MIN_FACE_BOX_SIZE_PX && face.height >= MIN_FACE_BOX_SIZE_PX);
-                faceOverlayUpdatedAt = performance.now();
-            } catch (err) {
-                clearFaceDetections();
-
-                if (err.name === 'AbortError') {
-                    logFaceError('Face detection request timed out. Continuing without face overlay.');
-                } else {
-                    logFaceError(`Face detection unavailable: ${err.message}`);
-                }
-            } finally {
-                window.clearTimeout(timeoutId);
-                faceAbortController = null;
-                faceRequestInFlight = false;
-            }
-        }
-
-        function drawFaceOverlay() {
-            if (!faceDetectionEnabled) {
-                return;
-            }
-
-            if (faceOverlayUpdatedAt && performance.now() - faceOverlayUpdatedAt > FACE_RESULT_TTL_MS) {
-                faceDetections = [];
-            }
-
-            faceDetections.forEach((face) => {
-                const labelY = Math.max(12, face.y1 - 6);
-
-                ctx.strokeStyle = '#FF00FF';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(face.x1, face.y1, face.width, face.height);
-
-                ctx.fillStyle = '#FF00FF';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(`Face ${(face.confidence * 100).toFixed(0)}%`, face.x1, labelY);
-            });
-        }
-
         async function processFrame() {
             if (!isTracking) return;
 
             const startTime = performance.now();
 
             try {
-                // Detect objects
+                // Detect
                 const predictions = await model.detect(video);
                 const filtered = predictions.filter(p => p.score > confidenceThreshold);
                 
-                // Track objects
+                // Track
                 const tracked = updateTrack(filtered);
 
                 // Draw
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // Apply image processing filters
-                if (exposureValue !== 0 || contrastValue !== 100) {
-                    const brightness = 100 + exposureValue;
-                    ctx.filter = `brightness(${brightness}%) contrast(${contrastValue}%)`;
-                }
-                
                 ctx.drawImage(video, 0, 0);
-                ctx.filter = 'none'; // Reset filter for drawing text/boxes
 
-                // Draw YOLO boxes
+                // Draw boxes
                 tracked.forEach(t => {
                     const [x, y, w, h] = t.det.bbox;
                     
@@ -726,8 +363,6 @@
                     ctx.fillText(`${t.det.class}`, x, y + h + 20);
                 });
 
-                drawFaceOverlay();
-
                 // Stats
                 frameCount++;
                 const now = performance.now();
@@ -740,7 +375,6 @@
                 document.getElementById('fps').textContent = fps;
                 document.getElementById('detections').textContent = filtered.length;
                 document.getElementById('tracked').textContent = tracked.length;
-                document.getElementById('trackedFaces').textContent = faceDetections.length;
                 document.getElementById('processTime').textContent = Math.round(performance.now() - startTime);
 
             } catch (err) {
@@ -754,14 +388,12 @@
             isTracking = false;
             log('Tracking stopped', 'info');
             updateStatus('Stopped', 'idle');
-            stopFacePolling();
 
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(t => t.stop());
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            clearFaceDetections();
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
         }
@@ -787,29 +419,10 @@
             document.getElementById('confidenceValue').textContent = confidenceThreshold.toFixed(2);
             log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');
         }
-        
-        function updateExposure(value) {
-            exposureValue = parseInt(value);
-            document.getElementById('exposureValue').textContent = (exposureValue >= 0 ? '+' : '') + exposureValue;
-            log('Exposure adjusted: ' + exposureValue, 'info');
-        }
-        
-        function updateContrast(value) {
-            contrastValue = parseInt(value);
-            document.getElementById('contrastValue').textContent = contrastValue + '%';
-            log('Contrast adjusted: ' + contrastValue + '%', 'info');
-        }
-        
-        function updateFaceConfidence(value) {
-            faceConfidenceThreshold = value / 100;
-            document.getElementById('faceConfidenceValue').textContent = faceConfidenceThreshold.toFixed(2);
-            log('Face confidence threshold set to: ' + faceConfidenceThreshold.toFixed(2), 'info');
-        }
 
         // Initialize on load
         window.addEventListener('load', () => {
             log('App loaded. Initializing...', 'info');
-            void loadServerConfig();
             loadModel();
         });
 
