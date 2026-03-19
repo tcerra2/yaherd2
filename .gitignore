@@ -31,6 +31,7 @@ val_utils/
 *_openvino_model
 *.torchscript
 *.pt
+!yolov8n-face.pt
 *.pth
 *.onnx
 *.engine
