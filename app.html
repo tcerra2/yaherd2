@@ -164,7 +164,7 @@
             <span class="confidence-value" id="confidenceValue">0.50</span>
         </div>
 
-        <div class="confidence-control">
+        <div class="confidence-control" id="faceControls">
             <label for="faceConfidenceSlider">Face Confidence:</label>
             <input type="range" id="faceConfidenceSlider" min="5" max="95" value="35" onchange="updateFaceConfidence(this.value)">
             <span class="confidence-value" id="faceConfidenceValue">0.35</span>
@@ -189,7 +189,7 @@
                 <div class="stat-label">Tracked IDs</div>
                 <div class="stat-value" id="tracked">0</div>
             </div>
-            <div class="stat-box">
+            <div class="stat-box" id="faceStatBox">
                 <div class="stat-label">Faces</div>
                 <div class="stat-value" id="faces">0</div>
             </div>
@@ -226,6 +226,7 @@
         let faceCaptureCanvas = document.createElement('canvas');
         let faceCaptureCtx = faceCaptureCanvas.getContext('2d');
         const FACE_POLL_INTERVAL_MS = 700;
+        const ENABLE_FACE_OVERLAY = false;
 
         function log(message, type = 'info') {
             console.log(message);
@@ -248,6 +249,9 @@
             try {
                 model = await cocoSsd.load();
                 log('✓ Model loaded successfully', 'success');
+                if (!ENABLE_FACE_OVERLAY) {
+                    log('Face overlay disabled to preserve object tracking stability', 'info');
+                }
                 updateStatus('Ready! Click START to begin tracking', 'idle');
             } catch (err) {
                 log(`✗ Model load error: ${err.message}`, 'error');
@@ -285,7 +289,9 @@
                     faceCaptureCanvas.width = video.videoWidth;
                     faceCaptureCanvas.height = video.videoHeight;
                     log(`✓ Camera: ${video.videoWidth}x${video.videoHeight}`, 'success');
-                    startFacePolling();
+                    if (ENABLE_FACE_OVERLAY) {
+                        startFacePolling();
+                    }
                     processFrame();
                 };
             } catch (err) {
@@ -450,20 +456,22 @@
                     ctx.fillText(`${t.det.class}`, x, y + h + 20);
                 });
 
-                latestFaces.forEach(face => {
-                    const x = face.x1;
-                    const y = face.y1;
-                    const w = face.x2 - face.x1;
-                    const h = face.y2 - face.y1;
+                if (ENABLE_FACE_OVERLAY) {
+                    latestFaces.forEach(face => {
+                        const x = face.x1;
+                        const y = face.y1;
+                        const w = face.x2 - face.x1;
+                        const h = face.y2 - face.y1;
 
-                    ctx.strokeStyle = '#FF00FF';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(x, y, w, h);
+                        ctx.strokeStyle = '#FF00FF';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x, y, w, h);
 
-                    ctx.fillStyle = '#FF00FF';
-                    ctx.font = 'bold 13px Arial';
-                    ctx.fillText(`Face ${(face.confidence * 100).toFixed(0)}%`, x, y - 10);
-                });
+                        ctx.fillStyle = '#FF00FF';
+                        ctx.font = 'bold 13px Arial';
+                        ctx.fillText(`Face ${(face.confidence * 100).toFixed(0)}%`, x, y - 10);
+                    });
+                }
 
                 // Stats
                 frameCount++;
@@ -477,7 +485,7 @@
                 document.getElementById('fps').textContent = fps;
                 document.getElementById('detections').textContent = filtered.length;
                 document.getElementById('tracked').textContent = tracked.length;
-                document.getElementById('faces').textContent = latestFaces.length;
+                document.getElementById('faces').textContent = ENABLE_FACE_OVERLAY ? latestFaces.length : 0;
                 document.getElementById('processTime').textContent = Math.round(performance.now() - startTime);
 
             } catch (err) {
@@ -532,6 +540,10 @@
 
         // Initialize on load
         window.addEventListener('load', () => {
+            if (!ENABLE_FACE_OVERLAY) {
+                document.getElementById('faceControls').style.display = 'none';
+                document.getElementById('faceStatBox').style.display = 'none';
+            }
             log('App loaded. Initializing...', 'info');
             loadModel();
         });
