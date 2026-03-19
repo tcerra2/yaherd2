@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -384,6 +384,66 @@
             font-weight: 800;
             color: #7dd3fc;
         }
+        .toggle-row,
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .toggle-label {
+            display: grid;
+            gap: 4px;
+            color: var(--text-main);
+        }
+        .toggle-label strong {
+            font-size: 0.98rem;
+        }
+        .toggle-label span {
+            color: var(--text-soft);
+            font-size: 0.84rem;
+        }
+        .toggle-switch {
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            accent-color: #7dd3fc;
+            flex: 0 0 auto;
+        }
+        .setting-row label {
+            font-weight: 700;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            min-width: 92px;
+        }
+        .setting-row input[type="range"] {
+            width: 100%;
+            accent-color: #7dd3fc;
+            cursor: pointer;
+        }
+        .setting-row select {
+            flex: 1;
+            min-width: 140px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+            font-weight: 700;
+        }
+        .setting-row option {
+            color: #0f172a;
+        }
+        .setting-value {
+            min-width: 64px;
+            text-align: right;
+            font-weight: 800;
+            color: #7dd3fc;
+        }
         .controls-panel,
         .advanced-controls,
         .control-group,
@@ -517,6 +577,14 @@
             .confidence-value {
                 text-align: left;
             }
+            .toggle-row,
+            .setting-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .setting-value {
+                text-align: left;
+            }
         }
     </style>
 </head>
@@ -587,13 +655,35 @@
                     <div class="settings-title">Tracking Settings</div>
                     <div class="settings-subtitle">Confidence, exposure, and contrast update live while the feed is running.</div>
                 </div>
-                <button class="settings-close" type="button" aria-label="Close tracking settings" onclick="closeSettingsMenu()">✕</button>
+                <button class="settings-close" type="button" aria-label="Close tracking settings" onclick="closeSettingsMenu()">Γ£ò</button>
             </div>
             <div class="settings-grid">
                 <div class="confidence-control">
                     <label for="confidenceSlider">Confidence</label>
                     <input type="range" id="confidenceSlider" min="0" max="100" value="50" oninput="updateConfidence(this.value)">
                     <span class="confidence-value" id="confidenceValue">0.50</span>
+                </div>
+                <div class="toggle-row">
+                    <label class="toggle-label" for="edgeDetectionToggle">
+                        <strong>Edge Detection</strong>
+                        <span>Show an edge overlay inside each detection box.</span>
+                    </label>
+                    <input class="toggle-switch" type="checkbox" id="edgeDetectionToggle" onchange="toggleEdgeDetection(this.checked)">
+                </div>
+                <div class="setting-row">
+                    <label for="edgeStrengthSlider">Edge Strength</label>
+                    <input type="range" id="edgeStrengthSlider" min="1" max="3" step="1" value="2" oninput="updateEdgeStrength(this.value)">
+                    <span class="setting-value" id="edgeStrengthValue">Medium</span>
+                </div>
+                <div class="setting-row">
+                    <label for="edgeColorSelect">Edge Color</label>
+                    <select id="edgeColorSelect" onchange="updateEdgeColor(this.value)">
+                        <option value="cyan">Cyan</option>
+                        <option value="lime">Lime</option>
+                        <option value="orange">Orange</option>
+                        <option value="magenta">Magenta</option>
+                        <option value="white">White</option>
+                    </select>
                 </div>
                 <div class="confidence-control">
                     <label for="exposureSlider">Exposure</label>
@@ -645,6 +735,12 @@
         let exposureValue = 0;
         let contrastValue = 100;
         let faceConfidenceThreshold = 0.5;
+        let edgeDetectionEnabled = false;
+        let edgeThreshold = 140;
+        let edgeAlpha = 180;
+        let edgeColor = { r: 0, g: 255, b: 255 };
+        const edgeCanvas = document.createElement('canvas');
+        const edgeCtx = edgeCanvas.getContext('2d');
 
         function log(message, type = 'info') {
             console.log(message);
@@ -694,12 +790,12 @@
             updateStatus('Loading model...', 'loading');
             try {
                 model = await cocoSsd.load();
-                log('✓ COCO-SSD model loaded successfully', 'success');
-                log('✓ Face detection running server-side (YOLOv8n-face model)', 'success');
+                log('Γ£ô COCO-SSD model loaded successfully', 'success');
+                log('Γ£ô Face detection running server-side (YOLOv8n-face model)', 'success');
                 updateStatus('Ready! Click START to begin tracking', 'idle');
                 setVideoPlaceholder('Tap Start to open the camera and begin object tracking.', true);
             } catch (err) {
-                log(`✗ Model load error: ${err.message}`, 'error');
+                log(`Γ£ù Model load error: ${err.message}`, 'error');
                 updateStatus(`Error: ${err.message}`, 'error');
                 setVideoPlaceholder(`Model failed to load: ${err.message}`, true);
             }
@@ -707,7 +803,7 @@
 
         async function startTracking() {
             if (!model) {
-                log('✗ Model not loaded', 'error');
+                log('Γ£ù Model not loaded', 'error');
                 updateStatus('Model not loaded. Wait 10 seconds...', 'error');
                 return;
             }
@@ -716,31 +812,31 @@
             isTracking = true;
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
-            updateStatus('🔴 TRACKING ACTIVE', 'active');
+            updateStatus('≡ƒö┤ TRACKING ACTIVE', 'active');
             setVideoPlaceholder('Requesting camera access...', true);
             trackedObjects.clear();
             trackedFaces.clear();
             nextTrackId = 0;
             nextFaceId = 0;
             faceDetectionFrameCount = 0;
-            log('✓ Tracking started. Using YOLOv8n-face for server-side face detection', 'success');
+            log('Γ£ô Tracking started. Using YOLOv8n-face for server-side face detection', 'success');
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: cameraFacing, width: { ideal: 640 }, height: { ideal: 480 } }
                 });
-                log('✓ Camera access granted', 'success');
+                log('Γ£ô Camera access granted', 'success');
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     updateFeedLayout();
                     setVideoPlaceholder('', false);
-                    log(`✓ Camera: ${video.videoWidth}x${video.videoHeight}`, 'success');
+                    log(`Γ£ô Camera: ${video.videoWidth}x${video.videoHeight}`, 'success');
                     processFrame();
                 };
             } catch (err) {
-                log(`✗ Camera error: ${err.message}`, 'error');
+                log(`Γ£ù Camera error: ${err.message}`, 'error');
                 updateStatus(`Camera error: ${err.message}`, 'error');
                 setVideoPlaceholder(`Camera error: ${err.message}`, true);
                 isTracking = false;
@@ -977,6 +1073,59 @@
             }
         }
 
+        function drawEdgeOverlay(bbox) {
+            const startX = Math.max(0, Math.floor(bbox[0]));
+            const startY = Math.max(0, Math.floor(bbox[1]));
+            const boxWidth = Math.min(canvas.width - startX, Math.floor(bbox[2]));
+            const boxHeight = Math.min(canvas.height - startY, Math.floor(bbox[3]));
+
+            if (boxWidth < 3 || boxHeight < 3) return;
+
+            const sourceImage = ctx.getImageData(startX, startY, boxWidth, boxHeight);
+            const source = sourceImage.data;
+            const grayscale = new Float32Array(boxWidth * boxHeight);
+
+            for (let index = 0; index < grayscale.length; index++) {
+                const pixelOffset = index * 4;
+                grayscale[index] =
+                    source[pixelOffset] * 0.299 +
+                    source[pixelOffset + 1] * 0.587 +
+                    source[pixelOffset + 2] * 0.114;
+            }
+
+            edgeCanvas.width = boxWidth;
+            edgeCanvas.height = boxHeight;
+            const edgeImage = edgeCtx.createImageData(boxWidth, boxHeight);
+            const edges = edgeImage.data;
+
+            for (let y = 1; y < boxHeight - 1; y++) {
+                for (let x = 1; x < boxWidth - 1; x++) {
+                    const idx = y * boxWidth + x;
+
+                    const gx =
+                        -grayscale[idx - boxWidth - 1] + grayscale[idx - boxWidth + 1] +
+                        -2 * grayscale[idx - 1] + 2 * grayscale[idx + 1] +
+                        -grayscale[idx + boxWidth - 1] + grayscale[idx + boxWidth + 1];
+
+                    const gy =
+                        -grayscale[idx - boxWidth - 1] - 2 * grayscale[idx - boxWidth] - grayscale[idx - boxWidth + 1] +
+                        grayscale[idx + boxWidth - 1] + 2 * grayscale[idx + boxWidth] + grayscale[idx + boxWidth + 1];
+
+                    const magnitude = Math.sqrt(gx * gx + gy * gy);
+                    if (magnitude < edgeThreshold) continue;
+
+                    const edgeOffset = idx * 4;
+                    edges[edgeOffset] = edgeColor.r;
+                    edges[edgeOffset + 1] = edgeColor.g;
+                    edges[edgeOffset + 2] = edgeColor.b;
+                    edges[edgeOffset + 3] = edgeAlpha;
+                }
+            }
+
+            edgeCtx.putImageData(edgeImage, 0, 0);
+            ctx.drawImage(edgeCanvas, startX, startY);
+        }
+
         async function processFrame() {
             if (!isTracking) return;
 
@@ -1031,6 +1180,10 @@
 
                 ctx.drawImage(video, 0, 0);
                 ctx.filter = 'none';
+
+                if (edgeDetectionEnabled) {
+                    tracked.forEach((track) => drawEdgeOverlay(track.det.bbox));
+                }
 
                 tracked.forEach((track) => {
                     const [x, y, w, h] = track.det.bbox;
@@ -1137,6 +1290,40 @@
             log(`Confidence threshold set to: ${confidenceThreshold.toFixed(2)}`, 'info');
         }
 
+        function toggleEdgeDetection(enabled) {
+            edgeDetectionEnabled = enabled;
+            log(`Edge detection ${enabled ? 'enabled' : 'disabled'}`, 'info');
+        }
+
+        function updateEdgeStrength(value) {
+            const level = Number(value);
+            const settingsByLevel = {
+                1: { threshold: 180, alpha: 110, label: 'Light' },
+                2: { threshold: 140, alpha: 180, label: 'Medium' },
+                3: { threshold: 95, alpha: 255, label: 'Strong' }
+            };
+
+            const selected = settingsByLevel[level] || settingsByLevel[2];
+            edgeThreshold = selected.threshold;
+            edgeAlpha = selected.alpha;
+            document.getElementById('edgeStrengthValue').textContent = selected.label;
+            log(`Edge strength set to: ${selected.label}`, 'info');
+        }
+
+        function updateEdgeColor(value) {
+            const colors = {
+                cyan: { r: 0, g: 255, b: 255, label: 'Cyan' },
+                lime: { r: 0, g: 255, b: 120, label: 'Lime' },
+                orange: { r: 255, g: 170, b: 0, label: 'Orange' },
+                magenta: { r: 255, g: 0, b: 200, label: 'Magenta' },
+                white: { r: 255, g: 255, b: 255, label: 'White' }
+            };
+
+            const selected = colors[value] || colors.cyan;
+            edgeColor = { r: selected.r, g: selected.g, b: selected.b };
+            log(`Edge color set to: ${selected.label}`, 'info');
+        }
+
         function updateExposure(value) {
             exposureValue = parseInt(value, 10);
             document.getElementById('exposureValue').textContent = (exposureValue >= 0 ? '+' : '') + exposureValue;
@@ -1163,6 +1350,8 @@
             syncCameraModeChip();
             updateFeedLayout();
             setVideoPlaceholder('Loading model...', true);
+            updateEdgeStrength(document.getElementById('edgeStrengthSlider').value);
+            updateEdgeColor(document.getElementById('edgeColorSelect').value);
             loadModel();
         });
 
