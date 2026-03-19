@@ -69,7 +69,7 @@ app.post('/api/detect-faces', async (req, res) => {
     };
 
     try {
-        const { image } = req.body || {};
+        const { image, faceConfidence } = req.body || {};
         if (!image || typeof image !== 'string') {
             return res.status(400).json({ faces: [], error: 'No image provided' });
         }
@@ -84,11 +84,16 @@ app.post('/api/detect-faces', async (req, res) => {
         const pythonExe = process.env.PYTHON_EXE || (process.platform === 'win32' ? 'python' : 'python3');
         const pythonScript = path.join(__dirname, 'detect_faces.py');
         const modelPath = path.join(__dirname, 'yolov8n-face.pt');
+        const normalizedFaceConfidence = typeof faceConfidence === 'number'
+            ? Math.max(0.05, Math.min(0.95, faceConfidence))
+            : 0.35;
 
         console.log(`[Face Detection] Executing: ${pythonExe} ${pythonScript}`);
         console.log(`[Face Detection] Model path: ${modelPath}`);
+        console.log(`[Face Detection] Confidence: ${normalizedFaceConfidence}`);
 
-        const python = spawn(pythonExe, [pythonScript, tempFile, outputFile, modelPath]);
+        const python = spawn(pythonExe, [pythonScript, tempFile, outputFile, modelPath, String(normalizedFaceConfidence)]);
+        let stdoutData = '';
         let stderrData = '';
 
         timeoutId = setTimeout(() => {
@@ -96,6 +101,10 @@ app.post('/api/detect-faces', async (req, res) => {
             python.kill('SIGTERM');
             setTimeout(() => python.kill('SIGKILL'), 2000);
         }, 30000);
+
+        python.stdout.on('data', (chunk) => {
+            stdoutData += chunk.toString();
+        });
 
         python.stderr.on('data', (chunk) => {
             stderrData += chunk.toString();
@@ -112,6 +121,13 @@ app.post('/api/detect-faces', async (req, res) => {
                 if (code === 0 && outputFile && fs.existsSync(outputFile)) {
                     const raw = fs.readFileSync(outputFile, 'utf8');
                     const parsed = JSON.parse(raw);
+                    console.log(`[Face Detection] Returned ${parsed.faces?.length || 0} faces`);
+                    if (stderrData) {
+                        console.log('[Face Detection] Python info:', stderrData.trim());
+                    }
+                    if (stdoutData) {
+                        console.log('[Face Detection] Python stdout:', stdoutData.trim());
+                    }
                     responseSent = true;
                     res.json({ faces: parsed.faces || [] });
                 } else {
@@ -119,7 +135,13 @@ app.post('/api/detect-faces', async (req, res) => {
                     if (stderrData) {
                         console.error('[Face Detection] Python stderr:', stderrData.trim());
                     }
-                    sendEmpty();
+                    if (stdoutData) {
+                        console.log('[Face Detection] Python stdout:', stdoutData.trim());
+                    }
+                    if (!responseSent) {
+                        responseSent = true;
+                        res.json({ faces: [], error: stderrData.trim() || `Face process exited with code ${code}` });
+                    }
                 }
             } catch (error) {
                 console.error('[Face Detection] Response error:', error.message);

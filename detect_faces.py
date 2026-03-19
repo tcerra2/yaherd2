@@ -4,7 +4,8 @@ import sys
 import warnings
 from pathlib import Path
 
-import cv2
+import numpy as np
+from PIL import Image
 
 warnings.filterwarnings('ignore')
 
@@ -26,14 +27,24 @@ def write_output(output_path, faces, success=True, error_message=None):
     Path(output_path).write_text(json.dumps(payload), encoding='utf-8')
 
 
+def parse_confidence(argv):
+    if len(argv) > 4:
+        try:
+            return float(argv[4])
+        except ValueError as error:
+            raise ValueError(f'Invalid confidence value: {argv[4]}') from error
+    return 0.35
+
+
 def main():
     if len(sys.argv) < 3:
-        print('Usage: python detect_faces.py <image_path> <output_json_path> [model_path]', file=sys.stderr)
+        print('Usage: python detect_faces.py <image_path> <output_json_path> [model_path] [confidence]', file=sys.stderr)
         return 1
 
     image_path = Path(sys.argv[1])
     output_path = Path(sys.argv[2])
     model_path = Path(sys.argv[3]) if len(sys.argv) > 3 else Path('yolov8n-face.pt')
+    confidence_threshold = parse_confidence(sys.argv)
 
     try:
         if not image_path.exists():
@@ -41,12 +52,14 @@ def main():
         if not model_path.exists():
             raise FileNotFoundError(f'Model not found: {model_path}')
 
-        image = cv2.imread(str(image_path))
-        if image is None or image.size == 0:
+        with Image.open(image_path) as source_image:
+            image = np.array(source_image.convert('RGB'))
+
+        if image.size == 0:
             raise ValueError(f'Could not read image: {image_path}')
 
         model = YOLO(str(model_path))
-        results = model.predict(source=image, conf=0.5, save=False, verbose=False)
+        results = model.predict(source=image, conf=confidence_threshold, save=False, verbose=False)
 
         faces = []
         if results:
@@ -66,6 +79,7 @@ def main():
                         'confidence': confidence,
                     })
 
+        print(f'Face detections: {len(faces)}', file=sys.stderr)
         write_output(output_path, faces)
         return 0
     except Exception as error:

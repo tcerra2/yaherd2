@@ -163,6 +163,12 @@
             <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">
             <span class="confidence-value" id="confidenceValue">0.50</span>
         </div>
+
+        <div class="confidence-control">
+            <label for="faceConfidenceSlider">Face Confidence:</label>
+            <input type="range" id="faceConfidenceSlider" min="5" max="95" value="35" onchange="updateFaceConfidence(this.value)">
+            <span class="confidence-value" id="faceConfidenceValue">0.35</span>
+        </div>
         
         <div class="controls">
             <button class="btn-start" id="startBtn" onclick="startTracking()">▶ START</button>
@@ -212,6 +218,7 @@
         let nextTrackId = 0;
         let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
         let confidenceThreshold = 0.5; // Default confidence threshold
+        let faceConfidenceThreshold = 0.35;
         let latestFaces = [];
         let isFaceDetectionRunning = false;
         let facePollingTimer = null;
@@ -378,7 +385,7 @@
                     const response = await fetch('/api/detect-faces', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image: imageData })
+                        body: JSON.stringify({ image: imageData, faceConfidence: faceConfidenceThreshold })
                     });
 
                     if (generation !== facePollingGeneration) {
@@ -388,6 +395,10 @@
                     if (response.ok) {
                         const result = await response.json();
                         latestFaces = Array.isArray(result.faces) ? result.faces : [];
+                        console.log('[Face Polling] Returned faces:', latestFaces.length);
+                        if (result.error) {
+                            console.warn('[Face Polling] Backend reported:', result.error);
+                        }
                     } else {
                         latestFaces = [];
                         console.warn('Face polling HTTP error:', response.status);
@@ -511,6 +522,12 @@
             confidenceThreshold = value / 100;
             document.getElementById('confidenceValue').textContent = confidenceThreshold.toFixed(2);
             log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');
+        }
+
+        function updateFaceConfidence(value) {
+            faceConfidenceThreshold = value / 100;
+            document.getElementById('faceConfidenceValue').textContent = faceConfidenceThreshold.toFixed(2);
+            log('Face confidence threshold set to: ' + faceConfidenceThreshold.toFixed(2), 'info');
         }
 
         // Initialize on load
