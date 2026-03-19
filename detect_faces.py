@@ -19,6 +19,10 @@ except ImportError:
 MODEL = None
 
 
+def log(message: str) -> None:
+    print(f'[face-worker] {message}', file=sys.stderr, flush=True)
+
+
 def env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -41,8 +45,10 @@ def resolve_model_path() -> Path | None:
 
     for candidate in candidates:
         if candidate.exists():
+            log(f'Using face model at {candidate}')
             return candidate
 
+    log(f'No face model found. Candidates checked: {", ".join(str(candidate) for candidate in candidates)}')
     return None
 
 
@@ -55,16 +61,20 @@ def get_model():
     model_path = resolve_model_path()
     if model_path is None:
         if env_flag('FACE_MODEL_ALLOW_DOWNLOAD'):
+            log('FACE_MODEL_ALLOW_DOWNLOAD enabled; loading yolov8n-face.pt via Ultralytics download path')
             MODEL = YOLO('yolov8n-face.pt', task='detect')
             return MODEL
 
         raise FileNotFoundError('yolov8n-face.pt was not found. Set FACE_MODEL_PATH, place the model in the repo, or enable FACE_MODEL_ALLOW_DOWNLOAD.')
 
+    log(f'Loading YOLO face model from {model_path}')
     MODEL = YOLO(str(model_path), task='detect')
+    log('YOLO face model loaded successfully')
     return MODEL
 
 
 def detect_faces(image_path: Path):
+    log(f'Running face detection for {image_path}')
     model = get_model()
     results = model(str(image_path), conf=0.25, imgsz=640, verbose=False)
     faces = []
@@ -93,11 +103,14 @@ def detect_faces(image_path: Path):
 
 
 def run_worker() -> int:
+    log(f'Worker booting with python={sys.executable}')
+    log(f'FACE_MODEL_PATH={os.getenv("FACE_MODEL_PATH", "<unset>")} FACE_MODEL_ALLOW_DOWNLOAD={os.getenv("FACE_MODEL_ALLOW_DOWNLOAD", "<unset>")} FACE_MODEL_PRELOAD={os.getenv("FACE_MODEL_PRELOAD", "<unset>")}')
     if env_flag('FACE_MODEL_PRELOAD', True):
         try:
+            log('Preloading face model on worker startup')
             get_model()
         except Exception as exc:
-            print(f'Face worker preload error: {exc}', file=sys.stderr)
+            log(f'Face worker preload error: {exc}')
 
     for raw_line in sys.stdin:
         line = raw_line.strip()
@@ -110,6 +123,7 @@ def run_worker() -> int:
             payload = json.loads(line)
             job_id = payload.get('id')
             image_path = Path(payload['imagePath']).expanduser().resolve()
+            log(f'Received job {job_id} for image {image_path}')
 
             if not image_path.exists():
                 raise FileNotFoundError(f'Image file not found: {image_path}')
@@ -117,9 +131,11 @@ def run_worker() -> int:
             response = {'id': job_id, 'faces': detect_faces(image_path)}
         except Exception as exc:
             response = {'id': job_id, 'faces': [], 'error': str(exc)}
-            print(f'Face worker error: {exc}', file=sys.stderr)
+            log(f'Face worker error for job {job_id}: {exc}')
 
         print(json.dumps(response), flush=True)
+
+    log('Worker stdin closed; exiting')
 
     return 0
 

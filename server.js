@@ -17,6 +17,24 @@ let faceWorkerBuffer = '';
 let faceWorkerBusy = false;
 const pendingFaceJobs = new Map();
 
+function logInfo(message, extra) {
+    if (extra === undefined) {
+        console.log(`[boot] ${message}`);
+        return;
+    }
+
+    console.log(`[boot] ${message}`, extra);
+}
+
+function logFace(message, extra) {
+    if (extra === undefined) {
+        console.log(`[face] ${message}`);
+        return;
+    }
+
+    console.log(`[face] ${message}`, extra);
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -118,6 +136,7 @@ function terminateFaceWorker() {
     }
 
     const worker = faceWorkerProcess;
+    logFace('Terminating face worker process', { pid: worker.pid });
     resetFaceWorkerState();
 
     worker.kill('SIGTERM');
@@ -140,8 +159,10 @@ function handleFaceWorkerOutput(data) {
 
         try {
             const message = JSON.parse(line);
+            logFace('Received face worker response', { jobId: message.id, faceCount: Array.isArray(message.faces) ? message.faces.length : 0, hasError: Boolean(message.error) });
             const job = pendingFaceJobs.get(message.id);
             if (!job) {
+                logFace('Dropped face worker response for unknown job', { jobId: message.id });
                 continue;
             }
 
@@ -160,8 +181,16 @@ function handleFaceWorkerOutput(data) {
 
 function ensureFaceWorker() {
     if (faceWorkerProcess) {
+        logFace('Reusing existing face worker', { pid: faceWorkerProcess.pid, busy: faceWorkerBusy });
         return faceWorkerProcess;
     }
+
+    logFace('Starting face worker', {
+        python: PYTHON_EXE,
+        script: FACE_WORKER_SCRIPT,
+        cwd: __dirname,
+        timeoutMs: FACE_DETECTION_TIMEOUT_MS
+    });
 
     const worker = spawn(PYTHON_EXE, [FACE_WORKER_SCRIPT, '--worker'], {
         cwd: __dirname,
@@ -170,6 +199,8 @@ function ensureFaceWorker() {
 
     faceWorkerProcess = worker;
     faceWorkerBuffer = '';
+
+    logFace('Face worker process spawned', { pid: worker.pid });
 
     worker.stdout.on('data', handleFaceWorkerOutput);
     worker.stderr.on('data', (data) => {
@@ -183,8 +214,9 @@ function ensureFaceWorker() {
         failPendingFaceJobs(error.message);
         resetFaceWorkerState();
     });
-    worker.on('close', (code) => {
-        const reason = `Face worker exited with code ${code}`;
+    worker.on('close', (code, signal) => {
+        const reason = `Face worker exited with code ${code}${signal ? ` signal ${signal}` : ''}`;
+        logFace('Face worker closed', { code, signal, pendingJobs: pendingFaceJobs.size });
         if (pendingFaceJobs.size > 0) {
             failPendingFaceJobs(reason);
         }
@@ -196,16 +228,19 @@ function ensureFaceWorker() {
 
 function submitFaceJob(imagePath) {
     if (faceWorkerBusy) {
+        logFace('Rejecting face job because worker is already busy');
         return Promise.resolve({ faces: [], error: 'Face worker busy' });
     }
 
     return new Promise((resolve) => {
         const worker = ensureFaceWorker();
         const jobId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        logFace('Submitting face job', { jobId, imagePath });
         const timeoutId = setTimeout(() => {
             pendingFaceJobs.delete(jobId);
             faceWorkerBusy = false;
             terminateFaceWorker();
+            logFace('Face job timed out', { jobId, timeoutMs: FACE_DETECTION_TIMEOUT_MS });
             resolve({ faces: [], error: 'Face detection timed out' });
         }, FACE_DETECTION_TIMEOUT_MS);
 
@@ -218,6 +253,7 @@ function submitFaceJob(imagePath) {
             pendingFaceJobs.delete(jobId);
             clearTimeout(timeoutId);
             faceWorkerBusy = false;
+            logFace('Failed to write face job to worker stdin', { jobId, error: error.message });
             resolve({ faces: [], error: error.message });
         }
     });
@@ -226,6 +262,7 @@ function submitFaceJob(imagePath) {
 // Face detection endpoint
 app.post('/api/detect-faces', async (req, res) => {
     let tempFile = null;
+    const startedAt = Date.now();
 
     try {
         if (!FACE_DETECTION_ENABLED) {
@@ -241,12 +278,14 @@ app.post('/api/detect-faces', async (req, res) => {
 
         tempFile = buildTempImagePath();
         fs.writeFileSync(tempFile, imageBuffer);
+        logFace('Accepted face detection request', { tempFile, bytes: imageBuffer.length });
 
         const result = await submitFaceJob(tempFile);
         if (result.error) {
             console.error('Face detection request failed:', result.error);
         }
 
+        logFace('Completed face detection request', { tempFile, durationMs: Date.now() - startedAt, faceCount: result.faces.length, hadError: Boolean(result.error) });
         return res.json({ faces: result.faces });
     } catch (err) {
         console.error('Face detection endpoint error:', err);
@@ -256,8 +295,31 @@ app.post('/api/detect-faces', async (req, res) => {
     }
 });
 
+process.on('uncaughtException', (error) => {
+    console.error('[boot] Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[boot] Unhandled rejection:', reason);
+});
+
+logInfo('Initializing server', {
+    nodeVersion: process.version,
+    platform: process.platform,
+    port: PORT,
+    cwd: process.cwd(),
+    faceDetectionEnabled: FACE_DETECTION_ENABLED,
+    faceDetectionTimeoutMs: FACE_DETECTION_TIMEOUT_MS,
+    facePollIntervalMs: FACE_POLL_INTERVAL_MS,
+    pythonExecutable: PYTHON_EXE,
+    faceWorkerScript: FACE_WORKER_SCRIPT
+});
+
 if (FACE_DETECTION_ENABLED) {
+    logInfo('Prestarting face worker because face detection is enabled');
     ensureFaceWorker();
+} else {
+    logInfo('Face detection is disabled; skipping worker prestart');
 }
 
 process.on('SIGINT', terminateFaceWorker);
@@ -265,6 +327,7 @@ process.on('SIGTERM', terminateFaceWorker);
 
 // Start server - listen on all interfaces for Railway
 app.listen(PORT, '0.0.0.0', () => {
+    logInfo('Server is listening', { host: '0.0.0.0', port: PORT });
     console.log(`🎯 YOLO Tracking app running on port ${PORT}`);
     console.log('All processing happens on the client-side!');
 });
