@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import json
+import os
 import sys
+import tempfile
+import urllib.request
 import warnings
 from pathlib import Path
 
@@ -36,6 +39,45 @@ def parse_confidence(argv):
     return 0.35
 
 
+def ensure_model_exists(model_path):
+    if model_path.exists():
+        return model_path
+
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+
+    configured_url = os.environ.get('FACE_MODEL_URL')
+    default_url = 'https://raw.githubusercontent.com/tcerra2/yaherd2/main/yolov8n-face.pt'
+    candidate_urls = [url for url in [configured_url, default_url] if url]
+
+    last_error = None
+    for url in candidate_urls:
+        try:
+            print(f'Downloading face model from: {url}', file=sys.stderr)
+            with urllib.request.urlopen(url, timeout=120) as response:
+                if response.status != 200:
+                    raise RuntimeError(f'Unexpected HTTP status {response.status}')
+
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pt', dir=str(model_path.parent)) as temp_file:
+                    while True:
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        temp_file.write(chunk)
+                    temp_name = temp_file.name
+
+            Path(temp_name).replace(model_path)
+            print(f'Face model downloaded to: {model_path}', file=sys.stderr)
+            return model_path
+        except Exception as error:
+            last_error = error
+            print(f'Failed to download model from {url}: {error}', file=sys.stderr)
+
+    raise FileNotFoundError(
+        f'Model not found: {model_path}. Attempted download URLs: {candidate_urls}. '
+        f'Last error: {last_error}'
+    )
+
+
 def main():
     if len(sys.argv) < 3:
         print('Usage: python detect_faces.py <image_path> <output_json_path> [model_path] [confidence]', file=sys.stderr)
@@ -49,8 +91,8 @@ def main():
     try:
         if not image_path.exists():
             raise FileNotFoundError(f'Image not found: {image_path}')
-        if not model_path.exists():
-            raise FileNotFoundError(f'Model not found: {model_path}')
+
+        model_path = ensure_model_exists(model_path)
 
         with Image.open(image_path) as source_image:
             image = np.array(source_image.convert('RGB'))
