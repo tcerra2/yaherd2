@@ -5,192 +5,617 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YOLO Object Tracking</title>
     <style>
+        :root {
+            --bg-top: #fbf6ea;
+            --bg-bottom: #dfe9f6;
+            --panel: rgba(15, 23, 42, 0.78);
+            --panel-strong: rgba(9, 14, 27, 0.92);
+            --panel-soft: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.14);
+            --text-main: #f8fafc;
+            --text-soft: rgba(248, 250, 252, 0.72);
+            --accent-start: #1fa971;
+            --accent-stop: #de4c4a;
+            --accent-flip: #1e7cf2;
+            --shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+            --bottom-bar-height: 104px;
+            --sheet-peek: 84px;
+            --feed-aspect: 1.3333;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            min-height: 100%;
+            overflow-x: hidden;
+        }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background:
+                radial-gradient(circle at top left, rgba(255, 196, 104, 0.45), transparent 28%),
+                radial-gradient(circle at top right, rgba(30, 124, 242, 0.22), transparent 32%),
+                linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+            color: var(--text-main);
+        }
+        .app-shell {
             min-height: 100vh;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
+            padding: 20px 20px calc(var(--bottom-bar-height) + 28px + env(safe-area-inset-bottom));
+            gap: 16px;
+        }
+        .topbar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .headline {
+            display: grid;
+            gap: 6px;
+        }
+        h1 {
+            color: #0f172a;
+            font-size: clamp(1.8rem, 4vw, 3rem);
+            line-height: 1;
+            letter-spacing: -0.04em;
+        }
+        .subtitle {
+            color: rgba(15, 23, 42, 0.72);
+            font-size: 0.95rem;
+        }
+        .status {
+            align-self: start;
+            padding: 12px 16px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            background: rgba(15, 23, 42, 0.08);
+            color: #0f172a;
+            border: 1px solid rgba(15, 23, 42, 0.1);
+        }
+        .status.loading { background: rgba(245, 158, 11, 0.15); color: #9a5b00; border-color: rgba(245, 158, 11, 0.28); }
+        .status.active { background: rgba(31, 169, 113, 0.16); color: #0d6b47; border-color: rgba(31, 169, 113, 0.28); }
+        .status.error { background: rgba(222, 76, 74, 0.16); color: #9b1c1a; border-color: rgba(222, 76, 74, 0.28); }
+        .status.idle { background: rgba(15, 23, 42, 0.08); color: #0f172a; border-color: rgba(15, 23, 42, 0.1); }
+        .stage {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             align-items: center;
-            padding: 20px;
+            justify-content: center;
+            gap: 14px;
+            min-height: 0;
         }
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 40px;
-            max-width: 900px;
-            width: 100%;
+        .video-frame {
+            width: min(100%, calc((100vh - 320px) * var(--feed-aspect)));
+            max-width: 1280px;
+            min-height: 220px;
+            max-height: calc(100vh - 320px);
+            aspect-ratio: var(--feed-aspect);
+            border-radius: 28px;
+            padding: clamp(10px, 2vw, 18px);
+            background: linear-gradient(160deg, rgba(7, 11, 22, 0.96) 0%, rgba(19, 34, 59, 0.86) 100%);
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
         }
-        h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 2.5em; }
-        .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 0.95em; }
         .video-container {
             position: relative;
             width: 100%;
-            max-width: 640px;
-            margin: 0 auto 30px;
-            background: #000;
-            border-radius: 15px;
+            height: 100%;
             overflow: hidden;
+            border-radius: 20px;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+                #000;
+        }
+        .video-overlay {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            right: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            z-index: 3;
+            pointer-events: none;
+        }
+        .overlay-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: rgba(9, 14, 27, 0.72);
+            color: var(--text-main);
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+        }
+        .video-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            text-align: center;
+            color: rgba(248, 250, 252, 0.88);
+            font-size: clamp(1rem, 1.6vw, 1.2rem);
+            letter-spacing: 0.02em;
+            background: radial-gradient(circle at center, rgba(30, 124, 242, 0.14), transparent 54%);
+            z-index: 1;
+        }
+        .video-placeholder.hidden {
+            display: none;
         }
         video, canvas {
             width: 100%;
-            height: auto;
+            height: 100%;
             display: block;
+            object-fit: contain;
+        }
+        video {
+            position: relative;
+            z-index: 0;
+            background: #000;
         }
         canvas {
             position: absolute;
-            top: 0;
-            left: 0;
+            inset: 0;
+            z-index: 2;
         }
-        .controls {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-bottom: 30px;
-        }
-        button {
-            padding: 12px 30px;
-            font-size: 1em;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .btn-start {
-            background: #4CAF50;
-            color: white;
-        }
-        .btn-start:hover:not(:disabled) {
-            background: #45a049;
-        }
-        .btn-stop {
-            background: #f44336;
-            color: white;
-        }
-        .btn-stop:hover:not(:disabled) {
-            background: #da190b;
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .status {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-weight: 600;
-            text-align: center;
-        }
-        .status.loading { background: #fff3cd; color: #856404; }
-        .status.active { background: #d4edda; color: #155724; }
-        .status.error { background: #f8d7da; color: #721c24; }
-        .status.idle { background: #d1ecf1; color: #0c5460; }
         .stats {
+            width: min(100%, 980px);
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
         }
         .stat-box {
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
+            background: rgba(9, 14, 27, 0.82);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 16px 18px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.15);
+            backdrop-filter: blur(16px);
+            min-width: 0;
         }
-        .stat-label { font-size: 0.85em; color: #999; }
-        .stat-value { font-size: 1.8em; font-weight: bold; color: #333; margin-top: 5px; }
-        .debug {
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 0.85em;
-            max-height: 150px;
+        .stat-label {
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-soft);
+        }
+        .stat-value {
+            font-size: clamp(1.7rem, 4vw, 2.4rem);
+            font-weight: 800;
+            color: var(--text-main);
+            margin-top: 8px;
+            line-height: 1;
+        }
+        .face-gallery {
+            width: min(100%, 980px);
+            padding: 16px;
+            background: rgba(9, 14, 27, 0.72);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            backdrop-filter: blur(16px);
+        }
+        .face-gallery-title {
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+        }
+        .face-thumbnails {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+            gap: 12px;
+            max-height: 176px;
             overflow-y: auto;
-            color: #333;
+            padding-right: 4px;
         }
-        .debug-line { margin: 5px 0; }
-        .error { color: #d32f2f; }
-        .success { color: #388e3c; }
-        .confidence-control {
+        .face-card {
+            background: rgba(255, 255, 255, 0.92);
+            border: 2px solid rgba(30, 124, 242, 0.46);
+            border-radius: 14px;
+            padding: 8px;
+            text-align: center;
+            box-shadow: 0 10px 22px rgba(30, 124, 242, 0.12);
+        }
+        .face-image {
+            width: 100%;
+            height: 95px;
+            object-fit: cover;
+            border-radius: 10px;
+            background: #e0e0e0;
+            display: block;
+        }
+        .face-info {
+            margin-top: 6px;
+            font-size: 0.7em;
+            color: #0f172a;
+        }
+        .face-id {
+            font-weight: 800;
+            color: #1e7cf2;
+            margin-bottom: 1px;
+        }
+        .person-id,
+        .face-confidence,
+        .face-timestamp {
+            color: rgba(15, 23, 42, 0.7);
+        }
+        .debug {
+            display: none;
+        }
+        .settings-fab {
+            position: fixed;
+            right: 20px;
+            bottom: calc(var(--bottom-bar-height) + 18px + env(safe-area-inset-bottom));
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: rgba(9, 14, 27, 0.9);
+            color: var(--text-main);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+            z-index: 20;
+            transition: transform 0.25s ease, background 0.25s ease;
+        }
+        .settings-fab:hover:not(:disabled) {
+            transform: translateY(-2px);
+            background: rgba(14, 22, 40, 0.98);
+        }
+        .hamburger {
+            width: 22px;
+            height: 16px;
+            display: grid;
+            gap: 4px;
+        }
+        .hamburger span {
+            width: 100%;
+            height: 2px;
+            border-radius: 999px;
+            background: currentColor;
+            display: block;
+        }
+        .settings-scrim {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 9, 18, 0.42);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 18;
+        }
+        .settings-scrim.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .settings-sheet {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 19;
+            padding: 16px 16px calc(var(--bottom-bar-height) + 18px + env(safe-area-inset-bottom));
+            transform: translateY(calc(100% - var(--sheet-peek)));
+            transition: transform 0.3s ease;
+            pointer-events: none;
+        }
+        .settings-sheet.open {
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        .settings-panel {
+            width: min(100%, 760px);
+            margin: 0 auto;
+            background: rgba(9, 14, 27, 0.96);
+            border: 1px solid var(--border);
+            border-radius: 28px 28px 0 0;
+            box-shadow: 0 -18px 50px rgba(15, 23, 42, 0.34);
+            padding: 14px 18px 18px;
+        }
+        .sheet-handle {
+            width: 62px;
+            height: 6px;
+            border-radius: 999px;
+            margin: 0 auto 16px;
+            background: rgba(248, 250, 252, 0.24);
+        }
+        .settings-header {
             display: flex;
             align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 8px;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .settings-title {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+        .settings-subtitle {
+            font-size: 0.84rem;
+            color: var(--text-soft);
+        }
+        .settings-close {
+            min-width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--panel-soft);
+            color: var(--text-main);
+        }
+        .settings-grid {
+            display: grid;
+            gap: 12px;
+        }
+        .confidence-control {
+            display: grid;
+            grid-template-columns: 92px 1fr auto;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .confidence-control label {
-            font-weight: 600;
-            color: #333;
-            min-width: 120px;
+            font-weight: 700;
+            color: var(--text-main);
+            font-size: 0.95rem;
         }
         .confidence-control input[type="range"] {
-            flex: 1;
-            min-width: 150px;
+            width: 100%;
+            accent-color: #7dd3fc;
             cursor: pointer;
         }
         .confidence-value {
-            font-weight: 600;
-            color: #2196F3;
-            min-width: 50px;
+            min-width: 56px;
             text-align: right;
+            font-weight: 800;
+            color: #7dd3fc;
+        }
+        .controls-panel,
+        .advanced-controls,
+        .control-group,
+        .control-value {
+            display: none;
+        }
+        .bottom-bar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 21;
+            padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+            background: linear-gradient(180deg, rgba(223, 233, 246, 0), rgba(223, 233, 246, 0.94) 18%, rgba(223, 233, 246, 0.98) 100%);
+            backdrop-filter: blur(18px);
+        }
+        .action-row {
+            width: min(100%, 760px);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+        button {
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+        }
+        .action-button {
+            min-height: 76px;
+            padding: 14px 16px;
+            border-radius: 24px;
+            color: #fff;
+            font-size: clamp(0.95rem, 2vw, 1.05rem);
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            box-shadow: 0 20px 32px rgba(15, 23, 42, 0.18);
+        }
+        .action-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+        .action-button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .btn-start { background: linear-gradient(135deg, #1fa971 0%, #148455 100%); }
+        .btn-stop { background: linear-gradient(135deg, #de4c4a 0%, #b6302f 100%); }
+        .btn-flip { background: linear-gradient(135deg, #1e7cf2 0%, #155bb1 100%); }
+        @media (max-width: 900px) {
+            .app-shell {
+                padding-left: 14px;
+                padding-right: 14px;
+            }
+            .topbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .status {
+                align-self: stretch;
+                text-align: center;
+            }
+            .video-frame {
+                width: 100%;
+                max-height: calc(100vh - 340px);
+            }
+            .stats {
+                width: 100%;
+            }
+        }
+        @media (max-width: 640px) {
+            :root {
+                --bottom-bar-height: 112px;
+            }
+            .app-shell {
+                gap: 12px;
+                padding-top: 14px;
+                padding-bottom: calc(var(--bottom-bar-height) + 22px + env(safe-area-inset-bottom));
+            }
+            .video-frame {
+                max-height: calc(100vh - 360px);
+                border-radius: 22px;
+                padding: 10px;
+            }
+            .video-container {
+                border-radius: 16px;
+            }
+            .video-overlay {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+            }
+            .overlay-chip {
+                font-size: 0.74rem;
+                padding: 8px 11px;
+            }
+            .stats {
+                grid-template-columns: 1fr;
+            }
+            .stat-box {
+                padding: 14px 16px;
+            }
+            .action-row {
+                gap: 10px;
+            }
+            .action-button {
+                min-height: 68px;
+                border-radius: 18px;
+                font-size: 0.9rem;
+                padding: 10px 8px;
+            }
+            .settings-fab {
+                right: 14px;
+                bottom: calc(var(--bottom-bar-height) + 14px + env(safe-area-inset-bottom));
+                width: 56px;
+                height: 56px;
+            }
+            .settings-sheet {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+            .settings-panel {
+                border-radius: 24px 24px 0 0;
+                padding-left: 14px;
+                padding-right: 14px;
+            }
+            .confidence-control {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            .confidence-value {
+                text-align: left;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🎯 Object Tracking</h1>
-        <p class="subtitle">Real-time tracking • 100% Client-Side Processing</p>
-        
-        <div class="status idle" id="status">
-            Ready to start (loading model...)
-        </div>
-        
-        <div class="video-container">
-            <video id="video" playsinline autoplay muted></video>
-            <canvas id="canvas"></canvas>
-        </div>
-        
-        <div class="confidence-control">
-            <label for="confidenceSlider">Confidence:</label>
-            <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">
-            <span class="confidence-value" id="confidenceValue">0.50</span>
-        </div>
-        
-        <div class="controls">
-            <button class="btn-start" id="startBtn" onclick="startTracking()">▶ START</button>
-            <button class="btn-stop" id="stopBtn" onclick="stopTracking()" disabled>⏹ STOP</button>
-            <button class="btn-start" id="cameraBtn" onclick="toggleCamera()" style="background: #2196F3;">📷 FLIP CAMERA</button>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-box">
-                <div class="stat-label">FPS</div>
-                <div class="stat-value" id="fps">0</div>
+    <div class="app-shell">
+        <div class="topbar">
+            <div class="headline">
+                <h1>Object Tracking</h1>
+                <p class="subtitle">Responsive live camera stage with real-time tracking stats</p>
             </div>
-            <div class="stat-box">
-                <div class="stat-label">Objects</div>
-                <div class="stat-value" id="detections">0</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Tracked IDs</div>
-                <div class="stat-value" id="tracked">0</div>
-            </div>
-            <div class="stat-box">
-                <div class="stat-label">Time (ms)</div>
-                <div class="stat-value" id="processTime">0</div>
+            <div class="status idle" id="status">
+                Ready to start (loading model...)
             </div>
         </div>
 
-        <div class="debug" id="debug"></div>
+        <main class="stage">
+            <div class="video-frame" id="videoFrame">
+                <div class="video-container">
+                    <div class="video-overlay">
+                        <div class="overlay-chip">Live Feed</div>
+                        <div class="overlay-chip" id="cameraModeChip">Front Camera</div>
+                    </div>
+                    <div class="video-placeholder" id="videoPlaceholder">Tap Start to open the camera and begin object tracking.</div>
+                    <video id="video" playsinline autoplay muted></video>
+                    <canvas id="canvas"></canvas>
+                </div>
+            </div>
+
+            <section class="stats" aria-label="Live tracking stats">
+                <div class="stat-box">
+                    <div class="stat-label">Frames per second</div>
+                    <div class="stat-value" id="fps">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Objects detected</div>
+                    <div class="stat-value" id="detections">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Tracked IDs</div>
+                    <div class="stat-value" id="tracked">0</div>
+                </div>
+            </section>
+
+            <div class="face-gallery" id="faceGalleryContainer" style="display: none;">
+                <div class="face-gallery-title">Detected Faces</div>
+                <div class="face-thumbnails" id="faceThumbnails"></div>
+            </div>
+
+            <div class="debug" id="debug"></div>
+        </main>
     </div>
+
+    <button class="settings-fab" id="settingsToggle" type="button" aria-label="Open tracking settings" aria-expanded="false" onclick="toggleSettingsMenu()">
+        <span class="hamburger" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+        </span>
+    </button>
+
+    <div class="settings-scrim" id="settingsScrim" onclick="closeSettingsMenu()"></div>
+
+    <aside class="settings-sheet" id="settingsSheet" aria-hidden="true">
+        <div class="settings-panel">
+            <div class="sheet-handle"></div>
+            <div class="settings-header">
+                <div>
+                    <div class="settings-title">Tracking Settings</div>
+                    <div class="settings-subtitle">Confidence, exposure, and contrast update live while the feed is running.</div>
+                </div>
+                <button class="settings-close" type="button" aria-label="Close tracking settings" onclick="closeSettingsMenu()">✕</button>
+            </div>
+            <div class="settings-grid">
+                <div class="confidence-control">
+                    <label for="confidenceSlider">Confidence</label>
+                    <input type="range" id="confidenceSlider" min="0" max="100" value="50" oninput="updateConfidence(this.value)">
+                    <span class="confidence-value" id="confidenceValue">0.50</span>
+                </div>
+                <div class="confidence-control">
+                    <label for="exposureSlider">Exposure</label>
+                    <input type="range" id="exposureSlider" min="-50" max="50" value="0" oninput="updateExposure(this.value)">
+                    <span class="confidence-value" id="exposureValue">0</span>
+                </div>
+                <div class="confidence-control">
+                    <label for="contrastSlider">Contrast</label>
+                    <input type="range" id="contrastSlider" min="50" max="200" value="100" oninput="updateContrast(this.value)">
+                    <span class="confidence-value" id="contrastValue">100%</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <nav class="bottom-bar" aria-label="Camera controls">
+        <div class="action-row">
+            <button class="action-button btn-start" id="startBtn" type="button" onclick="startTracking()">Start</button>
+            <button class="action-button btn-stop" id="stopBtn" type="button" onclick="stopTracking()" disabled>Stop</button>
+            <button class="action-button btn-flip" id="cameraBtn" type="button" onclick="toggleCamera()">Flip Camera</button>
+        </div>
+    </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
@@ -199,6 +624,11 @@
         let video = document.getElementById('video');
         let canvas = document.getElementById('canvas');
         let ctx = canvas.getContext('2d');
+        const videoPlaceholder = document.getElementById('videoPlaceholder');
+        const cameraModeChip = document.getElementById('cameraModeChip');
+        const settingsSheet = document.getElementById('settingsSheet');
+        const settingsScrim = document.getElementById('settingsScrim');
+        const settingsToggle = document.getElementById('settingsToggle');
         let model = null;
         let isTracking = false;
         let frameCount = 0;
@@ -206,8 +636,15 @@
         let lastFpsTime = performance.now();
         let trackedObjects = new Map();
         let nextTrackId = 0;
-        let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
-        let confidenceThreshold = 0.5; // Default confidence threshold
+        let cameraFacing = 'user';
+        let confidenceThreshold = 0.5;
+        let trackedFaces = new Map();
+        let nextFaceId = 0;
+        let faceDetectionFrameCount = 0;
+        let lastDetectedFaces = [];
+        let exposureValue = 0;
+        let contrastValue = 100;
+        let faceConfidenceThreshold = 0.5;
 
         function log(message, type = 'info') {
             console.log(message);
@@ -224,16 +661,47 @@
             document.getElementById('status').className = `status ${type}`;
         }
 
+        function setVideoPlaceholder(message, visible) {
+            videoPlaceholder.textContent = message;
+            videoPlaceholder.classList.toggle('hidden', !visible);
+        }
+
+        function syncCameraModeChip() {
+            cameraModeChip.textContent = cameraFacing === 'user' ? 'Front Camera' : 'Back Camera';
+        }
+
+        function updateFeedLayout() {
+            const videoWidth = video.videoWidth || 640;
+            const videoHeight = video.videoHeight || 480;
+            const aspectRatio = videoWidth / Math.max(videoHeight, 1);
+            document.documentElement.style.setProperty('--feed-aspect', aspectRatio.toFixed(4));
+        }
+
+        function toggleSettingsMenu(forceOpen) {
+            const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !settingsSheet.classList.contains('open');
+            settingsSheet.classList.toggle('open', shouldOpen);
+            settingsScrim.classList.toggle('open', shouldOpen);
+            settingsSheet.setAttribute('aria-hidden', String(!shouldOpen));
+            settingsToggle.setAttribute('aria-expanded', String(shouldOpen));
+        }
+
+        function closeSettingsMenu() {
+            toggleSettingsMenu(false);
+        }
+
         async function loadModel() {
             log('Initializing COCO-SSD model...', 'info');
             updateStatus('Loading model...', 'loading');
             try {
                 model = await cocoSsd.load();
-                log('✓ Model loaded successfully', 'success');
+                log('✓ COCO-SSD model loaded successfully', 'success');
+                log('✓ Face detection running server-side (YOLOv8n-face model)', 'success');
                 updateStatus('Ready! Click START to begin tracking', 'idle');
+                setVideoPlaceholder('Tap Start to open the camera and begin object tracking.', true);
             } catch (err) {
                 log(`✗ Model load error: ${err.message}`, 'error');
                 updateStatus(`Error: ${err.message}`, 'error');
+                setVideoPlaceholder(`Model failed to load: ${err.message}`, true);
             }
         }
 
@@ -249,25 +717,32 @@
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
             updateStatus('🔴 TRACKING ACTIVE', 'active');
+            setVideoPlaceholder('Requesting camera access...', true);
             trackedObjects.clear();
+            trackedFaces.clear();
             nextTrackId = 0;
+            nextFaceId = 0;
+            faceDetectionFrameCount = 0;
+            log('✓ Tracking started. Using YOLOv8n-face for server-side face detection', 'success');
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: cameraFacing, width: { ideal: 640 }, height: { ideal: 480 } }
                 });
                 log('✓ Camera access granted', 'success');
-                
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
+                    updateFeedLayout();
+                    setVideoPlaceholder('', false);
                     log(`✓ Camera: ${video.videoWidth}x${video.videoHeight}`, 'success');
                     processFrame();
                 };
             } catch (err) {
                 log(`✗ Camera error: ${err.message}`, 'error');
                 updateStatus(`Camera error: ${err.message}`, 'error');
+                setVideoPlaceholder(`Camera error: ${err.message}`, true);
                 isTracking = false;
                 document.getElementById('startBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = true;
@@ -278,7 +753,6 @@
             const used = new Set();
             const newTracks = [];
 
-            // Match existing tracks
             for (const [trackId, trackInfo] of trackedObjects) {
                 let bestDist = 100;
                 let bestIdx = -1;
@@ -312,7 +786,6 @@
                 }
             }
 
-            // Add new tracks
             detections.forEach((det, idx) => {
                 if (!used.has(idx)) {
                     const id = nextTrackId++;
@@ -330,41 +803,281 @@
             return newTracks;
         }
 
+        function getClassColor(className) {
+            const palette = ['#00C2FF', '#FF6B6B', '#FFD93D', '#6BCB77', '#B983FF', '#FF9F1C', '#2EC4B6', '#F15BB5', '#43AA8B', '#577590'];
+            const label = String(className || 'object');
+            let hash = 0;
+            for (let index = 0; index < label.length; index += 1) {
+                hash = ((hash << 5) - hash) + label.charCodeAt(index);
+                hash |= 0;
+            }
+            return palette[Math.abs(hash) % palette.length];
+        }
+
+        function matchFacesToPersons(faces, persons) {
+            log(`Matching ${faces.length} faces to ${Array.isArray(persons) ? persons.length : '?'} persons`, 'info');
+            if (!Array.isArray(persons)) {
+                log(`ERROR: persons is not an array, it's ${typeof persons}`, 'error');
+                return {};
+            }
+
+            const faceToPersonMap = {};
+            faces.forEach((face, idx) => {
+                let fcx;
+                let fcy;
+
+                if (face.topLeft && face.bottomRight && Array.isArray(face.topLeft) && Array.isArray(face.bottomRight)) {
+                    fcx = (face.topLeft[0] + face.bottomRight[0]) / 2;
+                    fcy = (face.topLeft[1] + face.bottomRight[1]) / 2;
+                } else if (face.start && face.end && Array.isArray(face.start) && Array.isArray(face.end)) {
+                    fcx = (face.start[0] + face.end[0]) / 2;
+                    fcy = (face.start[1] + face.end[1]) / 2;
+                } else if (face.x !== undefined && face.y !== undefined && face.width !== undefined && face.height !== undefined) {
+                    fcx = face.x + face.width / 2;
+                    fcy = face.y + face.height / 2;
+                } else {
+                    log(`Face ${idx} has unknown format: ${JSON.stringify(face).substring(0, 150)}`, 'error');
+                    return;
+                }
+
+                let bestPerson = null;
+                let bestDist = 150;
+                persons.forEach((person) => {
+                    if (!person || !person.det || !person.det.bbox) {
+                        return;
+                    }
+
+                    const [px, py, pw, ph] = person.det.bbox;
+                    const pcx = px + pw / 2;
+                    const pcy = py + ph / 2;
+                    const dist = Math.sqrt((fcx - pcx) ** 2 + (fcy - pcy) ** 2);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestPerson = person.id;
+                    }
+                });
+
+                if (bestPerson !== null) {
+                    faceToPersonMap[idx] = bestPerson;
+                }
+            });
+
+            return faceToPersonMap;
+        }
+
+        function updateFaceTrack(faces, faceToPersonMap) {
+            const now = performance.now();
+            try {
+                faces.forEach((face, idx) => {
+                    const personId = faceToPersonMap[idx];
+                    let fcx;
+                    let fcy;
+
+                    if (face.topLeft && face.bottomRight && Array.isArray(face.topLeft) && Array.isArray(face.bottomRight)) {
+                        fcx = (face.topLeft[0] + face.bottomRight[0]) / 2;
+                        fcy = (face.topLeft[1] + face.bottomRight[1]) / 2;
+                    } else if (face.start && face.end && Array.isArray(face.start) && Array.isArray(face.end)) {
+                        fcx = (face.start[0] + face.end[0]) / 2;
+                        fcy = (face.start[1] + face.end[1]) / 2;
+                    } else if (face.x !== undefined && face.y !== undefined && face.width !== undefined && face.height !== undefined) {
+                        fcx = face.x + face.width / 2;
+                        fcy = face.y + face.height / 2;
+                    } else {
+                        return;
+                    }
+
+                    let matchedFaceId = null;
+                    let bestDist = Infinity;
+                    const distThreshold = 250;
+
+                    for (const [faceId, faceInfo] of trackedFaces) {
+                        const samePerson = faceInfo.personId === personId && personId !== undefined;
+                        const standalone = faceInfo.personId === undefined && personId === undefined;
+                        if (!samePerson && !standalone) {
+                            continue;
+                        }
+
+                        const dist = Math.sqrt((fcx - faceInfo.cx) ** 2 + (fcy - faceInfo.cy) ** 2);
+                        if (dist < distThreshold && dist < bestDist) {
+                            bestDist = dist;
+                            matchedFaceId = faceId;
+                        }
+                    }
+
+                    if (matchedFaceId === null) {
+                        matchedFaceId = nextFaceId++;
+                    }
+
+                    const existingFace = trackedFaces.get(matchedFaceId);
+                    trackedFaces.set(matchedFaceId, {
+                        personId,
+                        bbox: face,
+                        cx: fcx,
+                        cy: fcy,
+                        confidence: 0.9,
+                        lastSeen: now,
+                        thumbnail: existingFace ? existingFace.thumbnail : null,
+                        thumbnailCaptured: existingFace ? existingFace.thumbnailCaptured : false
+                    });
+                });
+            } catch (err) {
+                log(`Error in updateFaceTrack: ${err.message}`, 'error');
+            }
+
+            for (const [faceId, faceInfo] of trackedFaces) {
+                if (now - faceInfo.lastSeen > 1000) {
+                    trackedFaces.delete(faceId);
+                }
+            }
+        }
+
+        function updateFaceGallery() {
+            try {
+                const container = document.getElementById('faceThumbnails');
+                if (!container) return;
+
+                const faces = Array.from(trackedFaces.entries())
+                    .filter(([_, info]) => info && info.thumbnail)
+                    .sort((a, b) => a[0] - b[0]);
+
+                if (faces.length === 0) {
+                    const galleryEl = document.getElementById('faceGalleryContainer');
+                    if (galleryEl) galleryEl.style.display = 'none';
+                    return;
+                }
+
+                const galleryEl = document.getElementById('faceGalleryContainer');
+                if (galleryEl) galleryEl.style.display = 'block';
+
+                const now = performance.now();
+                const html = faces.map(([faceId, info]) => {
+                    const lastSeenMs = now - info.lastSeen;
+                    const lastSeenSec = Math.round(lastSeenMs / 1000);
+                    const timeStr = lastSeenSec < 60 ? `${lastSeenSec}s ago` : 'offline';
+                    const confidence = info.confidence ? (info.confidence * 100).toFixed(0) : '?';
+                    const personInfo = info.personId !== undefined ? `Person #${info.personId}` : '(standalone)';
+
+                    return `
+                        <div class="face-card">
+                            <img src="${info.thumbnail}" class="face-image" alt="Face ${faceId}">
+                            <div class="face-info">
+                                <div class="face-id">Face #${faceId}</div>
+                                <div class="person-id">${personInfo}</div>
+                                <div class="face-confidence">${confidence}% conf</div>
+                                <div class="face-timestamp">${timeStr}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                if (container.innerHTML !== html) {
+                    container.innerHTML = html;
+                }
+            } catch (err) {
+            }
+        }
+
         async function processFrame() {
             if (!isTracking) return;
 
-            const startTime = performance.now();
-
             try {
-                // Detect
                 const predictions = await model.detect(video);
-                const filtered = predictions.filter(p => p.score > confidenceThreshold);
-                
-                // Track
+                const filtered = predictions.filter((prediction) => prediction.score > confidenceThreshold);
                 const tracked = updateTrack(filtered);
 
-                // Draw
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(video, 0, 0);
+                faceDetectionFrameCount += 1;
+                if (faceDetectionFrameCount % 3 === 0) {
+                    try {
+                        canvas.toBlob(async (blob) => {
+                            const formData = new FormData();
+                            formData.append('image', blob);
 
-                // Draw boxes
-                tracked.forEach(t => {
-                    const [x, y, w, h] = t.det.bbox;
-                    
-                    ctx.strokeStyle = '#00FF00';
+                            try {
+                                const response = await fetch('/api/detect-faces', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+
+                                const data = await response.json();
+                                if (data.faces && Array.isArray(data.faces) && data.faces.length > 0) {
+                                    const serverFaces = data.faces.map((face) => ({
+                                        topLeft: [face.x1, face.y1],
+                                        bottomRight: [face.x2, face.y2],
+                                        confidence: face.confidence,
+                                        serverFormat: true
+                                    }));
+
+                                    const faceToPersonMap = matchFacesToPersons(serverFaces, tracked);
+                                    updateFaceTrack(serverFaces, faceToPersonMap);
+                                    if (trackedFaces.size > 0) {
+                                        document.getElementById('faceGalleryContainer').style.display = 'block';
+                                        updateFaceGallery();
+                                    }
+                                }
+                            } catch (err) {
+                                log(`Face detection error: ${err.message}`, 'error');
+                            }
+                        }, 'image/jpeg', 0.85);
+                    } catch (err) {
+                        log(`Face detection setup error: ${err.message}`, 'error');
+                    }
+                }
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (exposureValue !== 0 || contrastValue !== 100) {
+                    const brightness = 100 + exposureValue;
+                    ctx.filter = `brightness(${brightness}%) contrast(${contrastValue}%)`;
+                }
+
+                ctx.drawImage(video, 0, 0);
+                ctx.filter = 'none';
+
+                tracked.forEach((track) => {
+                    const [x, y, w, h] = track.det.bbox;
+                    const boxColor = getClassColor(track.det.class);
+                    ctx.strokeStyle = boxColor;
                     ctx.lineWidth = 2;
                     ctx.strokeRect(x, y, w, h);
-
-                    ctx.fillStyle = '#00FF00';
+                    ctx.fillStyle = boxColor;
                     ctx.font = 'bold 16px Arial';
-                    ctx.fillText(`ID:${t.id}`, x, y - 10);
-
+                    ctx.fillText(`ID:${track.id}`, x, y - 10);
                     ctx.font = '12px Arial';
-                    ctx.fillText(`${t.det.class}`, x, y + h + 20);
+                    ctx.fillText(`${track.det.class}`, x, y + h + 20);
                 });
 
-                // Stats
-                frameCount++;
+                for (const [faceId, faceInfo] of trackedFaces) {
+                    if (!faceInfo.bbox) continue;
+
+                    let x1;
+                    let y1;
+                    let x2;
+                    let y2;
+                    const bbox = faceInfo.bbox;
+                    if (bbox.topLeft && bbox.bottomRight && Array.isArray(bbox.topLeft) && Array.isArray(bbox.bottomRight)) {
+                        [x1, y1] = bbox.topLeft;
+                        [x2, y2] = bbox.bottomRight;
+                    } else if (bbox.start && bbox.end) {
+                        [x1, y1] = bbox.start;
+                        [x2, y2] = bbox.end;
+                    } else if (bbox.x !== undefined && bbox.y !== undefined && bbox.width !== undefined && bbox.height !== undefined) {
+                        x1 = bbox.x;
+                        y1 = bbox.y;
+                        x2 = bbox.x + bbox.width;
+                        y2 = bbox.y + bbox.height;
+                    } else {
+                        continue;
+                    }
+
+                    ctx.strokeStyle = '#FF00FF';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                    ctx.fillStyle = '#FF00FF';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.fillText(`Face#${faceId}`, x1, y1 - 5);
+                }
+
+                updateFaceGallery();
+                frameCount += 1;
                 const now = performance.now();
                 if (now - lastFpsTime >= 1000) {
                     fps = frameCount;
@@ -375,8 +1088,6 @@
                 document.getElementById('fps').textContent = fps;
                 document.getElementById('detections').textContent = filtered.length;
                 document.getElementById('tracked').textContent = tracked.length;
-                document.getElementById('processTime').textContent = Math.round(performance.now() - startTime);
-
             } catch (err) {
                 log(`Detection error: ${err.message}`, 'error');
             }
@@ -388,42 +1099,79 @@
             isTracking = false;
             log('Tracking stopped', 'info');
             updateStatus('Stopped', 'idle');
-
+            setVideoPlaceholder('Tracking stopped. Tap Start to resume the camera feed.', true);
             if (video.srcObject) {
-                video.srcObject.getTracks().forEach(t => t.stop());
+                video.srcObject.getTracks().forEach((track) => track.stop());
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            trackedFaces.clear();
+            document.getElementById('faceThumbnails').innerHTML = '';
+            document.getElementById('faceGalleryContainer').style.display = 'none';
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
+            document.getElementById('detections').textContent = '0';
+            document.getElementById('tracked').textContent = '0';
+            updateFeedLayout();
         }
 
         function toggleCamera() {
             const cameraName = cameraFacing === 'user' ? 'Back Camera' : 'Front Camera';
             cameraFacing = cameraFacing === 'user' ? 'environment' : 'user';
-            
+            syncCameraModeChip();
             if (isTracking) {
-                log('Switching to ' + cameraName + '...', 'info');
+                log(`Switching to ${cameraName}...`, 'info');
                 stopTracking();
                 setTimeout(() => {
                     startTracking();
                 }, 500);
             } else {
-                log('Camera switched to: ' + cameraName, 'success');
-                updateStatus('Ready with ' + cameraName, 'idle');
+                log(`Camera switched to: ${cameraName}`, 'success');
+                updateStatus(`Ready with ${cameraName}`, 'idle');
             }
         }
 
         function updateConfidence(value) {
             confidenceThreshold = value / 100;
             document.getElementById('confidenceValue').textContent = confidenceThreshold.toFixed(2);
-            log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');
+            log(`Confidence threshold set to: ${confidenceThreshold.toFixed(2)}`, 'info');
         }
 
-        // Initialize on load
+        function updateExposure(value) {
+            exposureValue = parseInt(value, 10);
+            document.getElementById('exposureValue').textContent = (exposureValue >= 0 ? '+' : '') + exposureValue;
+            log(`Exposure adjusted: ${exposureValue}`, 'info');
+        }
+
+        function updateContrast(value) {
+            contrastValue = parseInt(value, 10);
+            document.getElementById('contrastValue').textContent = `${contrastValue}%`;
+            log(`Contrast adjusted: ${contrastValue}%`, 'info');
+        }
+
+        function updateFaceConfidence(value) {
+            faceConfidenceThreshold = value / 100;
+            const valueElement = document.getElementById('faceConfidenceValue');
+            if (valueElement) {
+                valueElement.textContent = faceConfidenceThreshold.toFixed(2);
+            }
+            log(`Face confidence threshold set to: ${faceConfidenceThreshold.toFixed(2)}`, 'info');
+        }
+
         window.addEventListener('load', () => {
             log('App loaded. Initializing...', 'info');
+            syncCameraModeChip();
+            updateFeedLayout();
+            setVideoPlaceholder('Loading model...', true);
             loadModel();
+        });
+
+        window.addEventListener('resize', updateFeedLayout);
+
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeSettingsMenu();
+            }
         });
 
         window.addEventListener('beforeunload', () => {
