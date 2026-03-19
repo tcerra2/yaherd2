@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 const FACE_DETECTION_ENABLED = process.env.ENABLE_FACE_DETECTION !== 'false';
 const FACE_DETECTION_TIMEOUT_MS = Number.parseInt(process.env.FACE_DETECTION_TIMEOUT_MS || '6000', 10);
 const FACE_POLL_INTERVAL_MS = Number.parseInt(process.env.FACE_POLL_INTERVAL_MS || '750', 10);
-const PYTHON_EXE = process.env.PYTHON_EXE || 'python';
+const PYTHON_EXE = process.env.PYTHON_EXE || (process.platform === 'win32' ? 'python' : 'python3');
 const FACE_WORKER_SCRIPT = path.join(__dirname, 'detect_faces.py');
 let faceWorkerProcess = null;
 let faceWorkerBuffer = '';

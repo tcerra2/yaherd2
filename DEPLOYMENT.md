@@ -13,6 +13,12 @@ Real-time object tracking using your device's camera. All processing happens **1
 
 ## 🚀 Deploy to Railway
 
+This app now has two runtime pieces:
+- Node.js for the web server and browser app
+- Python for the optional YOLO face-detection sidecar
+
+Railway therefore needs to install both `package.json` dependencies and `requirements.txt`. The repository includes `nixpacks.toml` so Railway can build both runtimes and still start the app with `node server.js`.
+
 Railway is a modern platform for deploying web applications. This project can be deployed there in just a few clicks!
 
 ### Prerequisites
@@ -38,7 +44,7 @@ git push -u origin main
 2. Click **"New Project"**
 3. Select **"Deploy from GitHub"**
 4. Connect your GitHub account and select the repository
-5. Railway will automatically detect the Node.js project and deploy it!
+5. Railway will detect `nixpacks.toml`, install Node.js + Python dependencies, and then start `node server.js`
 
 #### Step 3: Access Your App
 
@@ -52,6 +58,7 @@ Before deploying, test locally:
 
 ```bash
 npm install
+pip install -r requirements.txt
 npm start
 ```
 
@@ -75,17 +82,18 @@ Then open http://localhost:3000 in your browser.
             ⬆️ ONLY HTML/CSS/JS ⬇️
          (Model loaded from CDN)
 ┌─────────────────────────────────────────┐
-│      Railway Server (Minimal)           │
+│      Railway Server                     │
 │  ┌─────────────────────────────────┐   │
-│  │  Express.js                     │   │
+│  │  Express.js + Python Worker     │   │
 │  │  • Serves app.html              │   │
 │  │  • Static file serving          │   │
 │  │  • Health check endpoint        │   │
+│  │  • Face detection sidecar       │   │
 │  └─────────────────────────────────┘   │
 └─────────────────────────────────────────┘
 ```
 
-**Key Point**: The server only serves the HTML file and static assets. ALL object detection and tracking happens in the user's browser!
+**Key Point**: Object detection and tracking stay in the browser. The server is only needed for static hosting, health checks, and the optional face-detection sidecar.
 
 ## 📊 How It Works
 
@@ -158,6 +166,19 @@ this.maxDistance = 50; // Increase for more lenient matching
 
 If using Railway secrets:
 - `PORT` - Server port (default: 3000)
+- `ENABLE_FACE_DETECTION` - Set to `false` to disable the face sidecar
+- `FACE_DETECTION_TIMEOUT_MS` - Max server time for one face request
+- `FACE_POLL_INTERVAL_MS` - Browser polling interval for face requests
+- `FACE_MODEL_PATH` - Absolute path to `yolov8n-face.pt` in production
+- `FACE_MODEL_ALLOW_DOWNLOAD` - Set to `true` only if the deployed instance should download the model at runtime
+- `PYTHON_EXE` - Override the Python executable if your platform uses a different name
+
+### Face Detection Troubleshooting
+
+- If deploy logs show `ultralytics is not installed`, Railway did not install `requirements.txt`
+- If `/health` reports `workerStarted: false`, check the deploy logs for Python import or model-path errors
+- If logs show `yolov8n-face.pt was not found`, add the model to the deployed app or set `FACE_MODEL_PATH`
+- If requests still time out after the worker starts, raise `FACE_DETECTION_TIMEOUT_MS` to `10000` or `15000`
 
 ## 📊 Performance Tips
 

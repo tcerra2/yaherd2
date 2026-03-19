@@ -8,6 +8,7 @@ This is a FastAPI-based web service for real-time YOLO object detection and trac
 ### Prerequisites
 - Docker & Docker Compose
 - or Python 3.11+
+- Node.js 18+
 
 ### Option 1: Using Docker (Recommended)
 
@@ -128,10 +129,11 @@ GET /download/{filename}
    - Select the `yaherd` repository
 
 3. **Configure Environment**
-   - Railway automatically detects the Dockerfile
+   - For the web app deployment, Railway should use `nixpacks.toml` so it installs both Node.js and Python dependencies
    - Set environment variables if needed in Railway dashboard:
      - `PORT=8000` (usually set automatically)
      - `PYTHONUNBUFFERED=1`
+     - `FACE_MODEL_PATH=/app/yolov8n-face.pt` if the face model is mounted or copied into the deploy image
 
 4. **Deploy**
    - Click "Deploy Now"
@@ -210,7 +212,7 @@ main.py (FastAPI App)
 ## Troubleshooting
 
 ### Issue: Module not found errors
-**Solution:** Ensure all dependencies in `requirements-web.txt` are installed
+**Solution:** Ensure Railway installs `requirements.txt` for the face worker or `requirements-web.txt` for the FastAPI service, depending on which app you are deploying
 
 ### Issue: "Could not find model"
 **Solution:** Models are downloaded on first use. Check disk space.
