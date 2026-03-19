@@ -34,6 +34,8 @@ val_utils/
 *.onnx
 *.engine
 
+!yolov8n-face.pt
+
 # interactive plots
 *.html
 
