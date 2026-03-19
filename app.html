@@ -163,7 +163,7 @@
             <input type="range" id="confidenceSlider" min="0" max="100" value="50" onchange="updateConfidence(this.value)">
             <span class="confidence-value" id="confidenceValue">0.50</span>
         </div>
-
+        
         <div class="controls">
             <button class="btn-start" id="startBtn" onclick="startTracking()">▶ START</button>
             <button class="btn-stop" id="stopBtn" onclick="stopTracking()" disabled>⏹ STOP</button>
@@ -208,6 +208,7 @@
         let nextTrackId = 0;
         let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
         let confidenceThreshold = 0.5; // Default confidence threshold
+
         function log(message, type = 'info') {
             console.log(message);
             const debugEl = document.getElementById('debug');
