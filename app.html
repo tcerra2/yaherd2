@@ -164,12 +164,6 @@
             <span class="confidence-value" id="confidenceValue">0.50</span>
         </div>
 
-        <div class="confidence-control" id="faceControls">
-            <label for="faceConfidenceSlider">Face Confidence:</label>
-            <input type="range" id="faceConfidenceSlider" min="5" max="95" value="35" onchange="updateFaceConfidence(this.value)">
-            <span class="confidence-value" id="faceConfidenceValue">0.35</span>
-        </div>
-        
         <div class="controls">
             <button class="btn-start" id="startBtn" onclick="startTracking()">▶ START</button>
             <button class="btn-stop" id="stopBtn" onclick="stopTracking()" disabled>⏹ STOP</button>
@@ -188,10 +182,6 @@
             <div class="stat-box">
                 <div class="stat-label">Tracked IDs</div>
                 <div class="stat-value" id="tracked">0</div>
-            </div>
-            <div class="stat-box" id="faceStatBox">
-                <div class="stat-label">Faces</div>
-                <div class="stat-value" id="faces">0</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Time (ms)</div>
@@ -218,16 +208,6 @@
         let nextTrackId = 0;
         let cameraFacing = 'user'; // 'user' = front camera, 'environment' = back camera
         let confidenceThreshold = 0.5; // Default confidence threshold
-        let faceConfidenceThreshold = 0.35;
-        let latestFaces = [];
-        let isFaceDetectionRunning = false;
-        let facePollingTimer = null;
-        let facePollingGeneration = 0;
-        let faceCaptureCanvas = document.createElement('canvas');
-        let faceCaptureCtx = faceCaptureCanvas.getContext('2d');
-        const FACE_POLL_INTERVAL_MS = 700;
-        const ENABLE_FACE_OVERLAY = false;
-
         function log(message, type = 'info') {
             console.log(message);
             const debugEl = document.getElementById('debug');
@@ -249,9 +229,6 @@
             try {
                 model = await cocoSsd.load();
                 log('✓ Model loaded successfully', 'success');
-                if (!ENABLE_FACE_OVERLAY) {
-                    log('Face overlay disabled to preserve object tracking stability', 'info');
-                }
                 updateStatus('Ready! Click START to begin tracking', 'idle');
             } catch (err) {
                 log(`✗ Model load error: ${err.message}`, 'error');
@@ -273,8 +250,6 @@
             updateStatus('🔴 TRACKING ACTIVE', 'active');
             trackedObjects.clear();
             nextTrackId = 0;
-            latestFaces = [];
-            stopFacePolling();
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -286,12 +261,7 @@
                 video.onloadedmetadata = () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
-                    faceCaptureCanvas.width = video.videoWidth;
-                    faceCaptureCanvas.height = video.videoHeight;
                     log(`✓ Camera: ${video.videoWidth}x${video.videoHeight}`, 'success');
-                    if (ENABLE_FACE_OVERLAY) {
-                        startFacePolling();
-                    }
                     processFrame();
                 };
             } catch (err) {
@@ -359,70 +329,6 @@
             return newTracks;
         }
 
-        function stopFacePolling() {
-            facePollingGeneration++;
-            if (facePollingTimer) {
-                clearTimeout(facePollingTimer);
-                facePollingTimer = null;
-            }
-            isFaceDetectionRunning = false;
-            latestFaces = [];
-            document.getElementById('faces').textContent = '0';
-        }
-
-        function startFacePolling() {
-            const generation = ++facePollingGeneration;
-
-            const pollFaces = async () => {
-                if (!isTracking || generation !== facePollingGeneration) {
-                    return;
-                }
-
-                if (isFaceDetectionRunning || video.readyState < 2 || faceCaptureCanvas.width === 0) {
-                    facePollingTimer = setTimeout(pollFaces, FACE_POLL_INTERVAL_MS);
-                    return;
-                }
-
-                isFaceDetectionRunning = true;
-
-                try {
-                    faceCaptureCtx.drawImage(video, 0, 0, faceCaptureCanvas.width, faceCaptureCanvas.height);
-                    const imageData = faceCaptureCanvas.toDataURL('image/jpeg', 0.7);
-                    const response = await fetch('/api/detect-faces', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image: imageData, faceConfidence: faceConfidenceThreshold })
-                    });
-
-                    if (generation !== facePollingGeneration) {
-                        return;
-                    }
-
-                    if (response.ok) {
-                        const result = await response.json();
-                        latestFaces = Array.isArray(result.faces) ? result.faces : [];
-                        console.log('[Face Polling] Returned faces:', latestFaces.length);
-                        if (result.error) {
-                            console.warn('[Face Polling] Backend reported:', result.error);
-                        }
-                    } else {
-                        latestFaces = [];
-                        console.warn('Face polling HTTP error:', response.status);
-                    }
-                } catch (err) {
-                    latestFaces = [];
-                    console.warn('Face polling error:', err.message);
-                } finally {
-                    isFaceDetectionRunning = false;
-                    if (isTracking && generation === facePollingGeneration) {
-                        facePollingTimer = setTimeout(pollFaces, FACE_POLL_INTERVAL_MS);
-                    }
-                }
-            };
-
-            facePollingTimer = setTimeout(pollFaces, 0);
-        }
-
         async function processFrame() {
             if (!isTracking) return;
 
@@ -456,23 +362,6 @@
                     ctx.fillText(`${t.det.class}`, x, y + h + 20);
                 });
 
-                if (ENABLE_FACE_OVERLAY) {
-                    latestFaces.forEach(face => {
-                        const x = face.x1;
-                        const y = face.y1;
-                        const w = face.x2 - face.x1;
-                        const h = face.y2 - face.y1;
-
-                        ctx.strokeStyle = '#FF00FF';
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(x, y, w, h);
-
-                        ctx.fillStyle = '#FF00FF';
-                        ctx.font = 'bold 13px Arial';
-                        ctx.fillText(`Face ${(face.confidence * 100).toFixed(0)}%`, x, y - 10);
-                    });
-                }
-
                 // Stats
                 frameCount++;
                 const now = performance.now();
@@ -485,7 +374,6 @@
                 document.getElementById('fps').textContent = fps;
                 document.getElementById('detections').textContent = filtered.length;
                 document.getElementById('tracked').textContent = tracked.length;
-                document.getElementById('faces').textContent = ENABLE_FACE_OVERLAY ? latestFaces.length : 0;
                 document.getElementById('processTime').textContent = Math.round(performance.now() - startTime);
 
             } catch (err) {
@@ -499,7 +387,6 @@
             isTracking = false;
             log('Tracking stopped', 'info');
             updateStatus('Stopped', 'idle');
-            stopFacePolling();
 
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(t => t.stop());
@@ -532,18 +419,8 @@
             log('Confidence threshold set to: ' + confidenceThreshold.toFixed(2), 'info');
         }
 
-        function updateFaceConfidence(value) {
-            faceConfidenceThreshold = value / 100;
-            document.getElementById('faceConfidenceValue').textContent = faceConfidenceThreshold.toFixed(2);
-            log('Face confidence threshold set to: ' + faceConfidenceThreshold.toFixed(2), 'info');
-        }
-
         // Initialize on load
         window.addEventListener('load', () => {
-            if (!ENABLE_FACE_OVERLAY) {
-                document.getElementById('faceControls').style.display = 'none';
-                document.getElementById('faceStatBox').style.display = 'none';
-            }
             log('App loaded. Initializing...', 'info');
             loadModel();
         });
